@@ -23,38 +23,58 @@ SPECIALTY_TIERS = {
     "exact": 1.0,
     "related": 0.6,
     "general": 0.3,
-    "none": 0.0,
 }
 
-# Groups of specialties considered "related" to each other
-SPECIALTY_GROUPS = [
-    {"UCI", "UTI", "Cuidados Intensivos", "UPC"},
-    {"Urgencias", "Emergencias", "Urgencia", "Prehospitalario"},
-    {"Neonatología", "Pediatría", "UCIN"},
-    {"Pabellón", "Anestesia", "Arsenalero", "Pabellón Quirúrgico"},
-    {"Oncología", "Radioterapia", "Quimioterapia"},
-    {"Domiciliaria", "Domiciliario", "Visitas Domiciliarias", "Cuidado Domiciliario"},
-    {"Salud Ocupacional", "Higiene Industrial", "Medicina del Trabajo"},
-    {"Médico Quirúrgico", "Hospitalización", "Cuidados Medios"},
-    {"Diálisis", "Nefrología"},
-    {"Maternidad", "Ginecología", "Obstétrica"},
-    {"Coronaria", "Cardiología"},
-]
+# Keyword groups: canonical group name → substrings to match in listing specialty (lowercase)
+SPECIALTY_KEYWORD_GROUPS: dict[str, list[str]] = {
+    "urgencias":        ["urgencia", "emergencia", "prehospital", "rescate", "ambulancia", "paramédic", "paramedic"],
+    "uci":              ["uci", "uti", "paciente crítico", "paciente critico", "intensivo", "upc"],
+    "neonatología":     ["neonato", "neonatolog", "ucin"],
+    "pediatría":        ["pediatr"],
+    "pabellón":         ["pabellón", "pabellon", "anestesia", "arsenal", "quirúrgic", "quirurgic"],
+    "oncología":        ["oncolog", "quimioterapia", "radioterapia", "cáncer", "cancer"],
+    "domiciliaria":     ["domicili"],
+    "salud_ocupacional":["ocupacional", "higiene industrial"],
+    "hospitalización":  ["hospitaliz", "médico quirúrgico", "medico quirurgico", "cuidados medios", "hmq"],
+    "diálisis":         ["diálisis", "dialisis", "hemodiálisis", "hemodialisis"],
+    "maternidad":       ["maternidad", "ginecolog", "obstétric", "obstetric"],
+    "coronaria":        ["coronaria", "cardiolog", "hemodinam", "cateterismo"],
+    "adulto_mayor":     ["adulto mayor", "larga estadía", "larga estadia", "larga estancia", "gerontolog"],
+    "aps":              ["atención primaria", "atencion primaria", "cesfam", "salud familiar"],
+}
+
+# Groups considered clinically related (sharing skills/context)
+RELATED_GROUP_PAIRS: set[frozenset] = {
+    frozenset(["urgencias", "uci"]),
+    frozenset(["urgencias", "pabellón"]),
+    frozenset(["uci", "coronaria"]),
+    frozenset(["uci", "neonatología"]),
+    frozenset(["uci", "pabellón"]),
+    frozenset(["oncología", "hospitalización"]),
+    frozenset(["maternidad", "neonatología"]),
+    frozenset(["domiciliaria", "adulto_mayor"]),
+}
+
+
+def _get_specialty_group(specialty: str) -> str | None:
+    s = specialty.lower().strip()
+    for group, keywords in SPECIALTY_KEYWORD_GROUPS.items():
+        if any(kw in s for kw in keywords):
+            return group
+    return None
 
 
 def _specialty_tier(user_specialty: str, listing_specialty: str | None) -> str:
     if not listing_specialty:
         return "general"
 
-    u = user_specialty.strip().lower()
-    l = listing_specialty.strip().lower()
+    u_group = _get_specialty_group(user_specialty)
+    l_group = _get_specialty_group(listing_specialty)
 
-    if u == l:
-        return "exact"
-
-    for group in SPECIALTY_GROUPS:
-        lower_group = {s.lower() for s in group}
-        if u in lower_group and l in lower_group:
+    if u_group and l_group:
+        if u_group == l_group:
+            return "exact"
+        if frozenset([u_group, l_group]) in RELATED_GROUP_PAIRS:
             return "related"
 
     return "general"
@@ -73,9 +93,10 @@ def _passes_hard_filters(listing: dict, profile: Profile) -> tuple[bool, str | N
     if profile.years_experience < required:
         return False, f"experience: {profile.years_experience} < {required} required"
 
-    # Contract type
+    # Contract type — "unknown" and "contract" pass (extraction ambiguity; contract ≈ plazo fijo)
+    PASSTHROUGH_CONTRACTS = {"unknown", "contract"}
     if profile.accepted_contracts and listing.get("contract_type"):
-        if listing["contract_type"] not in profile.accepted_contracts + ["unknown"]:
+        if listing["contract_type"] not in set(profile.accepted_contracts) | PASSTHROUGH_CONTRACTS:
             return False, f"contract type: {listing['contract_type']} not in {profile.accepted_contracts}"
 
     return True, None
