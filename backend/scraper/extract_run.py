@@ -5,6 +5,7 @@ Run with:  python -m scraper.extract_run
 """
 import sys
 import time
+import unicodedata
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -12,6 +13,35 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from scraper.extract import build_batch_request, submit_batch, poll_batch, iter_batch_results
 from db.supabase_client import get_client
+
+
+def _normalize_text(text: str | None) -> str:
+    if not text:
+        return ""
+    normalized = unicodedata.normalize("NFKD", text)
+    return "".join(ch for ch in normalized if not unicodedata.combining(ch)).lower().strip()
+
+
+def _is_enfermeria_role(title: str | None) -> bool:
+    normalized_title = _normalize_text(title)
+    if not normalized_title:
+        return False
+
+    # Keep only professional Enfermeria roles, explicitly excluding technical tracks.
+    if "enfermer" not in normalized_title:
+        return False
+
+    excluded_markers = [
+        "tens",
+        "tecnico",
+        "tecnica",
+        "auxiliar",
+        "paramedic",
+        "kinesiolog",
+        "estudiante",
+        "intern",
+    ]
+    return not any(marker in normalized_title for marker in excluded_markers)
 
 
 def get_unextracted_files() -> list[dict]:
@@ -109,17 +139,23 @@ def run():
     hashes = [r["custom_id"] for r in requests]
     url_map = get_urls_for_hashes(hashes)
 
-    ok = low_conf = failed = 0
+    ok = low_conf = failed = skipped_non_enfermeria = 0
     for hash_, fields in iter_batch_results(batch_id):
         if fields is None:
             print(f"  {hash_}: extraction failed")
             failed += 1
             continue
 
+        title = fields.get("title", "?")
+        if not _is_enfermeria_role(title):
+            print(f"  {title} — skipped [non-enfermeria role]")
+            skipped_non_enfermeria += 1
+            continue
+
         url = url_map.get(hash_, f"unknown:{hash_}")
         conf = fields.get("confidence", 0)
         status = "ok" if conf >= 0.6 else "low_confidence"
-        print(f"  {fields.get('title', '?')} @ {fields.get('company', '?')} — conf={conf:.2f} [{status}]")
+        print(f"  {title} @ {fields.get('company', '?')} — conf={conf:.2f} [{status}]")
 
         try:
             write_listing(hash_, url, fields)
@@ -131,7 +167,10 @@ def run():
             print(f"    DB write failed: {e}")
             failed += 1
 
-    print(f"\nDone. OK: {ok}  Low-confidence: {low_conf}  Failed: {failed}")
+    print(
+        f"\nDone. OK: {ok}  Low-confidence: {low_conf}  "
+        f"Skipped non-enfermeria: {skipped_non_enfermeria}  Failed: {failed}"
+    )
 
 
 if __name__ == "__main__":

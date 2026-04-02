@@ -4,6 +4,7 @@ Takes a user profile and scores all listings using hard filters + specialty sign
 Returns ranked matches and writes them to the matches table.
 """
 from dataclasses import dataclass
+import unicodedata
 from db.supabase_client import get_client
 
 
@@ -80,8 +81,40 @@ def _specialty_tier(user_specialty: str, listing_specialty: str | None) -> str:
     return "general"
 
 
+def _normalize_text(text: str | None) -> str:
+    if not text:
+        return ""
+    normalized = unicodedata.normalize("NFKD", text)
+    return "".join(ch for ch in normalized if not unicodedata.combining(ch)).lower().strip()
+
+
+def _is_enfermeria_role(title: str | None) -> bool:
+    normalized_title = _normalize_text(title)
+    if not normalized_title:
+        return False
+
+    if "enfermer" not in normalized_title:
+        return False
+
+    excluded_markers = [
+        "tens",
+        "tecnico",
+        "tecnica",
+        "auxiliar",
+        "paramedic",
+        "kinesiolog",
+        "estudiante",
+        "intern",
+    ]
+    return not any(marker in normalized_title for marker in excluded_markers)
+
+
 def _passes_hard_filters(listing: dict, profile: Profile) -> tuple[bool, str | None]:
     """Returns (passes, reason_if_failed)."""
+
+    # Enforce professional Enfermeria roles only.
+    if not _is_enfermeria_role(listing.get("title")):
+        return False, "non-enfermeria role"
 
     # Region filter
     if listing.get("region") and profile.region:

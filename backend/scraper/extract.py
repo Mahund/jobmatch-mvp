@@ -75,6 +75,27 @@ _REQUEST_PARAMS = {
 }
 
 
+def _get_batches_api(client):
+    """Return the batches API handle for SDK variants.
+
+    Newer SDKs expose `client.messages.batches`, while older releases may
+    expose `client.beta.messages.batches`.
+    """
+    messages = getattr(client, "messages", None)
+    if messages is not None and hasattr(messages, "batches"):
+        return messages.batches
+
+    beta = getattr(client, "beta", None)
+    beta_messages = getattr(beta, "messages", None) if beta is not None else None
+    if beta_messages is not None and hasattr(beta_messages, "batches"):
+        return beta_messages.batches
+
+    raise RuntimeError(
+        "Installed anthropic SDK does not support Message Batches. "
+        "Upgrade anthropic (recommended >=0.39.0)."
+    )
+
+
 def build_batch_request(custom_id: str, html: str) -> dict:
     """Build one batch request entry for a listing."""
     text = html_to_text(html)
@@ -90,7 +111,8 @@ def build_batch_request(custom_id: str, html: str) -> dict:
 def submit_batch(requests: list[dict]) -> str:
     """Submit a list of batch requests. Returns the batch ID."""
     client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
-    batch = client.messages.batches.create(requests=requests)
+    batches_api = _get_batches_api(client)
+    batch = batches_api.create(requests=requests)
     return batch.id
 
 
@@ -98,8 +120,9 @@ def poll_batch(batch_id: str, poll_interval: int = 60) -> None:
     """Block until the batch reaches 'ended' status."""
     import time as _time
     client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
+    batches_api = _get_batches_api(client)
     while True:
-        batch = client.messages.batches.retrieve(batch_id)
+        batch = batches_api.retrieve(batch_id)
         counts = batch.request_counts
         print(f"  Batch {batch_id}: {batch.processing_status} "
               f"(done={counts.succeeded + counts.errored + counts.expired + counts.canceled}, "
@@ -112,7 +135,8 @@ def poll_batch(batch_id: str, poll_interval: int = 60) -> None:
 def iter_batch_results(batch_id: str):
     """Yield (custom_id, fields_or_None) for each result in the batch."""
     client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
-    for result in client.messages.batches.results(batch_id):
+    batches_api = _get_batches_api(client)
+    for result in batches_api.results(batch_id):
         if result.result.type != "succeeded":
             yield result.custom_id, None
             continue
