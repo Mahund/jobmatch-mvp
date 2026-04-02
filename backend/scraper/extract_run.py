@@ -9,6 +9,8 @@ import unicodedata
 from datetime import datetime, timezone
 from pathlib import Path
 
+from bs4 import BeautifulSoup
+
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from scraper.extract import build_batch_request, submit_batch, poll_batch, iter_batch_results
@@ -20,6 +22,13 @@ def _normalize_text(text: str | None) -> str:
         return ""
     normalized = unicodedata.normalize("NFKD", text)
     return "".join(ch for ch in normalized if not unicodedata.combining(ch)).lower().strip()
+
+
+def _extract_title_from_html(html: str) -> str | None:
+    """Cheaply extract job title from raw listing HTML without using Claude."""
+    soup = BeautifulSoup(html, "html.parser")
+    h1 = soup.find("h1")
+    return h1.get_text(strip=True) if h1 else None
 
 
 def _is_enfermeria_role(title: str | None) -> bool:
@@ -117,14 +126,20 @@ def run():
     print(f"\n[2/4] Downloading HTML for {len(pending)} listings...")
     requests = []
     skipped = 0
+    skipped_non_enfermeria = 0
     for file in pending:
         html = download_html(file["path"])
         if html is None:
             skipped += 1
             continue
+        title_guess = _extract_title_from_html(html)
+        if not _is_enfermeria_role(title_guess):
+            print(f"  {title_guess or '(no title)'} — pre-filtered [non-enfermeria]")
+            skipped_non_enfermeria += 1
+            continue
         requests.append(build_batch_request(file["hash"], html))
 
-    print(f"  Ready: {len(requests)}  Download failures: {skipped}")
+    print(f"  Ready: {len(requests)}  Pre-filtered: {skipped_non_enfermeria}  Download failures: {skipped}")
 
     if not requests:
         print("  Nothing to submit. Exiting.")
@@ -139,7 +154,7 @@ def run():
     hashes = [r["custom_id"] for r in requests]
     url_map = get_urls_for_hashes(hashes)
 
-    ok = low_conf = failed = skipped_non_enfermeria = 0
+    ok = low_conf = failed = skipped_post = 0
     for hash_, fields in iter_batch_results(batch_id):
         if fields is None:
             print(f"  {hash_}: extraction failed")
@@ -148,8 +163,8 @@ def run():
 
         title = fields.get("title", "?")
         if not _is_enfermeria_role(title):
-            print(f"  {title} — skipped [non-enfermeria role]")
-            skipped_non_enfermeria += 1
+            print(f"  {title} — skipped post-extraction [non-enfermeria role]")
+            skipped_post += 1
             continue
 
         url = url_map.get(hash_, f"unknown:{hash_}")
@@ -169,7 +184,7 @@ def run():
 
     print(
         f"\nDone. OK: {ok}  Low-confidence: {low_conf}  "
-        f"Skipped non-enfermeria: {skipped_non_enfermeria}  Failed: {failed}"
+        f"Pre-filtered: {skipped_non_enfermeria}  Post-filtered: {skipped_post}  Failed: {failed}"
     )
 
 

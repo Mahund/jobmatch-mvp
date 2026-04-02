@@ -45,3 +45,11 @@ Frontend needs: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `NE
 
 ## Supabase key format
 The service key uses the newer `sb_secret_` format (not a JWT). Auth tokens use ES256 — validate via `db.auth.get_user(token)`, not manual JWT decode.
+
+## Git / PR workflow
+When pushing changes, always follow this sequence:
+1. Create a new branch (e.g. `git checkout -b feat/short-description`)
+2. Commit the changes
+3. Push the branch (`git push -u origin <branch>`)
+4. Create a PR with `gh pr create`
+5. Wait 30 seconds, then check CI status with `gh pr checks <pr-number>`
