@@ -5,6 +5,10 @@ on:
     - cron: "0 8 * * *"   # 08:00 UTC = 05:00 Chile time
   workflow_dispatch:       # allow manual trigger
 
+concurrency:
+  group: pipeline-singleton
+  cancel-in-progress: false  # second trigger waits; does NOT cancel the running job
+
 jobs:
   pipeline:
     runs-on: ubuntu-latest
