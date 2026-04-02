@@ -11,6 +11,15 @@ Do not configure a service pointing to an undeployed or unverified URL.
 - `backend/` — FastAPI app, deployed to Vercel project `jobmatch-mvp-api`
 - `frontend/` — Next.js app, deployed to Vercel project `jobmatch-mvp-web`
 - `.github/workflows/scrape.yml` — daily pipeline: scrape → extract → rematch
+- `.github/workflows/ci.yml` — CI: runs on PRs and pushes to master
+- `.github/pull_request_template.md` — PR checklist template
+
+## CI checks
+Triggered on every PR and push to `master`. Two required jobs:
+- **Backend checks**: Python 3.12, compiles all backend code, runs `pytest backend/tests`
+- **Frontend checks**: Node 20, `npm run lint`, `npm test`, `npm run build`
+
+Backend tests use `PYTHONPATH=backend`. Frontend build uses placeholder env vars (no real Supabase/API needed in CI).
 
 ## Vercel projects
 | Project | Root Directory | Purpose |
