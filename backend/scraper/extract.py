@@ -56,14 +56,17 @@ SYSTEM_PROMPT = (
 )
 
 
-def html_to_text(html: str) -> str:
-    """Strip HTML to clean readable text for the LLM."""
-    soup = BeautifulSoup(html, "lxml")
+def _soup_to_text(soup: BeautifulSoup) -> str:
     for tag in soup(["script", "style", "nav", "header", "footer", "aside", "meta", "link"]):
         tag.decompose()
     text = soup.get_text(separator="\n", strip=True)
-    # Truncate to ~3000 chars — key info is always in the first half of a job listing
     return text[:3000]
+
+
+def html_to_text(html: str) -> str:
+    """Strip HTML to clean readable text for the LLM."""
+    soup = BeautifulSoup(html, "lxml")
+    return _soup_to_text(soup)
 
 
 _REQUEST_PARAMS = {
@@ -99,6 +102,18 @@ def _get_batches_api(client):
 def build_batch_request(custom_id: str, html: str) -> dict:
     """Build one batch request entry for a listing."""
     text = html_to_text(html)
+    return {
+        "custom_id": custom_id,
+        "params": {
+            **_REQUEST_PARAMS,
+            "messages": [{"role": "user", "content": f"Extract the structured data from this job listing:\n\n{text}"}],
+        },
+    }
+
+
+def build_batch_request_from_soup(custom_id: str, soup: BeautifulSoup) -> dict:
+    """Build one batch request entry reusing an already-parsed BeautifulSoup object."""
+    text = _soup_to_text(soup)
     return {
         "custom_id": custom_id,
         "params": {

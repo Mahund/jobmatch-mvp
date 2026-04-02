@@ -13,7 +13,7 @@ from bs4 import BeautifulSoup
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from scraper.extract import build_batch_request, submit_batch, poll_batch, iter_batch_results
+from scraper.extract import build_batch_request_from_soup, submit_batch, poll_batch, iter_batch_results
 from db.supabase_client import get_client
 
 
@@ -24,9 +24,12 @@ def _normalize_text(text: str | None) -> str:
     return "".join(ch for ch in normalized if not unicodedata.combining(ch)).lower().strip()
 
 
-def _extract_title_from_html(html: str) -> str | None:
-    """Cheaply extract job title from raw listing HTML without using Claude."""
-    soup = BeautifulSoup(html, "html.parser")
+def _parse_html(html: str) -> BeautifulSoup:
+    return BeautifulSoup(html, "lxml")
+
+
+def _extract_title_from_soup(soup: BeautifulSoup) -> str | None:
+    """Cheaply extract job title from a parsed listing without using Claude."""
     h1 = soup.find("h1")
     return h1.get_text(strip=True) if h1 else None
 
@@ -132,12 +135,13 @@ def run():
         if html is None:
             skipped += 1
             continue
-        title_guess = _extract_title_from_html(html)
+        soup = _parse_html(html)
+        title_guess = _extract_title_from_soup(soup)
         if not _is_enfermeria_role(title_guess):
             print(f"  {title_guess or '(no title)'} — pre-filtered [non-enfermeria]")
             skipped_non_enfermeria += 1
             continue
-        requests.append(build_batch_request(file["hash"], html))
+        requests.append(build_batch_request_from_soup(file["hash"], soup))
 
     print(f"  Ready: {len(requests)}  Pre-filtered: {skipped_non_enfermeria}  Download failures: {skipped}")
 
