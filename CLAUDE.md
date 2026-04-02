@@ -52,4 +52,11 @@ When pushing changes, always follow this sequence:
 2. Commit the changes
 3. Push the branch (`git push -u origin <branch>`)
 4. Create a PR with `gh pr create`
-5. Wait 30 seconds, then check CI status with `gh pr checks <pr-number>`
+5. Wait 60 seconds, then check CI status with `gh pr checks <pr-number>`
+
+When the user says they merged a PR and want to start something new, follow this sequence before creating a new branch:
+1. `git checkout master`
+2. `git fetch origin`
+3. `git status` — verify master is behind or up to date (not diverged)
+4. `git pull origin master`
+5. Only then proceed with the normal branch → commit → push → PR flow
