@@ -99,20 +99,11 @@ def _get_batches_api(client):
     )
 
 
-def build_batch_request(custom_id: str, html: str) -> dict:
-    """Build one batch request entry for a listing."""
-    text = html_to_text(html)
-    return {
-        "custom_id": custom_id,
-        "params": {
-            **_REQUEST_PARAMS,
-            "messages": [{"role": "user", "content": f"Extract the structured data from this job listing:\n\n{text}"}],
-        },
-    }
-
-
 def build_batch_request_from_soup(custom_id: str, soup: BeautifulSoup) -> dict:
-    """Build one batch request entry reusing an already-parsed BeautifulSoup object."""
+    """Build one batch request entry reusing an already-parsed BeautifulSoup object.
+
+    Note: the soup is mutated (tags decomposed) by this call and should not be reused afterward.
+    """
     text = _soup_to_text(soup)
     return {
         "custom_id": custom_id,
@@ -121,6 +112,12 @@ def build_batch_request_from_soup(custom_id: str, soup: BeautifulSoup) -> dict:
             "messages": [{"role": "user", "content": f"Extract the structured data from this job listing:\n\n{text}"}],
         },
     }
+
+
+def build_batch_request(custom_id: str, html: str) -> dict:
+    """Build one batch request entry for a listing."""
+    soup = BeautifulSoup(html, "lxml")
+    return build_batch_request_from_soup(custom_id, soup)
 
 
 def submit_batch(requests: list[dict]) -> str:
