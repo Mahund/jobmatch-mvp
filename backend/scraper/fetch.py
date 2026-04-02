@@ -4,7 +4,7 @@ import httpx
 from bs4 import BeautifulSoup
 
 BASE_URL = "https://cl.computrabajo.com"
-SEARCH_QUERIES = ["enfermera", "enfermero", "técnico enfermería", "nurse"]
+SEARCH_QUERIES = ["enfermera", "enfermero", "nurse"]
 MAX_PAGES = 3
 
 HEADERS = {

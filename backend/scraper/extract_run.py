@@ -1,5 +1,6 @@
 """
-Step 3 orchestrator: Storage HTML → Claude extraction → listings table.
+Step 3 orchestrator: Storage HTML → Claude Batch extraction → listings table.
+Uses the Anthropic Message Batches API (50% cheaper, async-safe for nightly pipeline).
 Run with:  python -m scraper.extract_run
 """
 import sys
@@ -9,8 +10,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from scraper.extract import extract_listing
-from scraper.dedup import url_hash
+from scraper.extract import build_batch_request, submit_batch, poll_batch, iter_batch_results
 from db.supabase_client import get_client
 
 
@@ -21,20 +21,14 @@ def get_unextracted_files() -> list[dict]:
     """
     db = get_client()
 
-    # List all files in raw-listings bucket
-    files = db.storage.from_("raw-listings").list(
-        path="",
-        options={"limit": 1000}
-    )
+    files = db.storage.from_("raw-listings").list(path="", options={"limit": 1000})
 
     all_files = []
     for item in files:
-        # Each top-level item is a date folder
         if item.get("id") is None:
             folder = item["name"]
             folder_files = db.storage.from_("raw-listings").list(
-                path=folder,
-                options={"limit": 1000}
+                path=folder, options={"limit": 1000}
             )
             for f in folder_files:
                 if f["name"].endswith(".html"):
@@ -44,7 +38,6 @@ def get_unextracted_files() -> list[dict]:
     if not all_files:
         return []
 
-    # Find which hashes already exist in listings
     hashes = [f["hash"] for f in all_files]
     result = db.table("listings").select("url_hash").in_("url_hash", hashes).execute()
     done = {row["url_hash"] for row in result.data}
@@ -58,16 +51,14 @@ def download_html(path: str) -> str | None:
         data = db.storage.from_("raw-listings").download(path)
         return data.decode("utf-8")
     except Exception as e:
-        print(f"    Download failed: {e}")
+        print(f"    Download failed for {path}: {e}")
         return None
 
 
-def get_url_for_hash(hash_: str) -> str | None:
+def get_urls_for_hashes(hashes: list[str]) -> dict[str, str]:
     db = get_client()
-    result = db.table("seen_urls").select("url").eq("url_hash", hash_).limit(1).execute()
-    if result.data:
-        return result.data[0]["url"]
-    return None
+    result = db.table("seen_urls").select("url_hash,url").in_("url_hash", hashes).execute()
+    return {row["url_hash"]: row["url"] for row in result.data}
 
 
 def write_listing(hash_: str, url: str, fields: dict) -> None:
@@ -83,9 +74,9 @@ def write_listing(hash_: str, url: str, fields: dict) -> None:
 
 
 def run():
-    print("=== JobMatch extractor — Step 3 ===")
+    print("=== JobMatch extractor — Step 3 (Batch API) ===")
 
-    print("\n[1/3] Finding unextracted files in Storage...")
+    print("\n[1/4] Finding unextracted files in Storage...")
     pending = get_unextracted_files()
     print(f"  Pending: {len(pending)}")
 
@@ -93,37 +84,42 @@ def run():
         print("  Nothing to extract. Exiting.")
         return
 
-    ok = 0
-    low_conf = 0
-    failed = 0
-
-    print(f"\n[2/3] Extracting {len(pending)} listings with Claude...")
-    for i, file in enumerate(pending, 1):
-        hash_ = file["hash"]
-        path = file["path"]
-        print(f"  [{i}/{len(pending)}] {path}")
-
-        html = download_html(path)
+    print(f"\n[2/4] Downloading HTML for {len(pending)} listings...")
+    requests = []
+    skipped = 0
+    for file in pending:
+        html = download_html(file["path"])
         if html is None:
-            failed += 1
+            skipped += 1
             continue
+        requests.append(build_batch_request(file["hash"], html))
 
-        try:
-            fields = extract_listing(html)
-        except Exception as e:
-            print(f"    Extraction error: {e}")
-            failed += 1
-            continue
+    print(f"  Ready: {len(requests)}  Download failures: {skipped}")
 
+    if not requests:
+        print("  Nothing to submit. Exiting.")
+        return
+
+    print(f"\n[3/4] Submitting batch of {len(requests)} to Claude (50% off via Batch API)...")
+    batch_id = submit_batch(requests)
+    print(f"  Batch ID: {batch_id}")
+    poll_batch(batch_id, poll_interval=30)
+
+    print(f"\n[4/4] Processing results...")
+    hashes = [r["custom_id"] for r in requests]
+    url_map = get_urls_for_hashes(hashes)
+
+    ok = low_conf = failed = 0
+    for hash_, fields in iter_batch_results(batch_id):
         if fields is None:
-            print(f"    No tool call returned")
+            print(f"  {hash_}: extraction failed")
             failed += 1
             continue
 
-        url = get_url_for_hash(hash_) or f"unknown:{hash_}"
+        url = url_map.get(hash_, f"unknown:{hash_}")
         conf = fields.get("confidence", 0)
         status = "ok" if conf >= 0.6 else "low_confidence"
-        print(f"    {fields.get('title', '?')} @ {fields.get('company', '?')} — conf={conf:.2f} [{status}]")
+        print(f"  {fields.get('title', '?')} @ {fields.get('company', '?')} — conf={conf:.2f} [{status}]")
 
         try:
             write_listing(hash_, url, fields)
@@ -135,12 +131,7 @@ def run():
             print(f"    DB write failed: {e}")
             failed += 1
 
-        # Respectful rate limiting
-        time.sleep(0.5)
-
-    print(f"\n[3/3] Done.")
-    print(f"  OK: {ok}  Low-confidence: {low_conf}  Failed: {failed}")
-    print(f"  Total in listings table: {ok + low_conf}")
+    print(f"\nDone. OK: {ok}  Low-confidence: {low_conf}  Failed: {failed}")
 
 
 if __name__ == "__main__":

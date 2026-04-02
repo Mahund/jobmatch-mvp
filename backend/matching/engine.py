@@ -89,7 +89,7 @@ def _passes_hard_filters(listing: dict, profile: Profile) -> tuple[bool, str | N
             return False, f"region mismatch: {listing['region']}"
 
     # Years of experience
-    required = listing.get("years_experience", 0) or 0
+    required = int(listing.get("years_experience") or 0)
     if profile.years_experience < required:
         return False, f"experience: {profile.years_experience} < {required} required"
 
@@ -115,6 +115,9 @@ def run_matching(profile: Profile, write_results: bool = True) -> list[dict]:
     """
     db = get_client()
     listings = db.table("listings").select("*").eq("extraction_status", "ok").execute().data
+
+    if write_results:
+        db.table("matches").delete().eq("user_id", profile.user_id).execute()
 
     matches = []
     for listing in listings:
