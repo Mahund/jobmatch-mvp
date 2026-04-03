@@ -38,6 +38,8 @@ async function apiFetch(path: string, token: string, options?: RequestInit): Pro
 }
 
 export const api = {
+  getSpecialties: () =>
+    fetch(`${API_URL}/specialties`).then(r => r.ok ? r.json() as Promise<string[]> : Promise.resolve([])),
   getMatches: (token: string, page = 1, pageSize = 20, sort: "score" | "published_date" = "score") =>
     apiFetch(`/matches?page=${page}&page_size=${pageSize}&sort=${sort}`, token) as Promise<{
       matches: object[];

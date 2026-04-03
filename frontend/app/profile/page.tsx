@@ -64,6 +64,13 @@ export default function ProfilePage() {
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState("");
   const [deleting, setDeleting] = useState(false);
+  const [specialtyOptions, setSpecialtyOptions] = useState<string[]>(SPECIALTY_OPTIONS);
+
+  useEffect(() => {
+    api.getSpecialties().then(opts => {
+      if (opts.length > 0) setSpecialtyOptions(opts);
+    }).catch(() => { /* keep fallback */ });
+  }, []);
 
   const [form, setForm] = useState({
     specialty: "",
@@ -183,6 +190,7 @@ export default function ProfilePage() {
             <SpecialtyCombobox
               value={form.specialty}
               onChange={v => setForm(f => ({ ...f, specialty: v }))}
+              options={specialtyOptions}
             />
           </Field>
 
@@ -295,53 +303,118 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
-function SpecialtyCombobox({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+function normalize(s: string) {
+  return s.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase().trim();
+}
+
+function SpecialtyCombobox({
+  value,
+  onChange,
+  options,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  options: string[];
+}) {
   const [query, setQuery] = useState(value);
   const [open, setOpen] = useState(false);
+  const [activeIndex, setActiveIndex] = useState(-1);
   const containerRef = useRef<HTMLDivElement>(null);
+  const queryRef = useRef(query);
+  const valueRef = useRef(value);
+  const onChangeRef = useRef(onChange);
+
+  useEffect(() => { queryRef.current = query; }, [query]);
+  useEffect(() => { valueRef.current = value; }, [value]);
+  useEffect(() => { onChangeRef.current = onChange; }, [onChange]);
 
   // Keep query in sync when value is set externally (e.g. profile load)
   useEffect(() => { setQuery(value); }, [value]);
 
   const filtered = query.trim() === ""
-    ? SPECIALTY_OPTIONS
-    : SPECIALTY_OPTIONS.filter(s => s.toLowerCase().includes(query.toLowerCase()));
+    ? options
+    : options.filter(s => normalize(s).includes(normalize(query)));
 
   function select(s: string) {
-    onChange(s);
+    onChangeRef.current(s);
     setQuery(s);
     setOpen(false);
+    setActiveIndex(-1);
   }
 
-  // Close on outside click
+  // Register outside-click handler once; read latest query/value via refs
   useEffect(() => {
     function handler(e: MouseEvent) {
       if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
         setOpen(false);
-        // If user typed something that doesn't match any option, revert to saved value
-        if (!SPECIALTY_OPTIONS.includes(query)) setQuery(value);
+        setActiveIndex(-1);
+        const q = queryRef.current;
+        const v = valueRef.current;
+        const match = options.find(s => normalize(s) === normalize(q));
+        if (match) {
+          onChangeRef.current(match);
+          setQuery(match);
+        } else {
+          setQuery(v);
+        }
       }
     }
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
-  }, [query, value]);
+  }, [options]);
+
+  function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (!open && e.key !== "Escape") setOpen(true);
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setActiveIndex(i => (i + 1) % filtered.length);
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setActiveIndex(i => (i <= 0 ? filtered.length - 1 : i - 1));
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      const target = activeIndex >= 0 ? filtered[activeIndex] : filtered[0];
+      if (target) select(target);
+    } else if (e.key === "Escape") {
+      setOpen(false);
+      setActiveIndex(-1);
+      setQuery(value);
+    }
+  }
+
+  const listboxId = "specialty-listbox";
 
   return (
     <div ref={containerRef} className="relative">
       <input
+        role="combobox"
+        aria-expanded={open && filtered.length > 0}
+        aria-controls={listboxId}
+        aria-autocomplete="list"
+        aria-activedescendant={activeIndex >= 0 ? `specialty-option-${activeIndex}` : undefined}
         value={query}
-        onChange={e => { setQuery(e.target.value); setOpen(true); }}
+        onChange={e => { setQuery(e.target.value); setOpen(true); setActiveIndex(-1); }}
         onFocus={() => setOpen(true)}
+        onKeyDown={handleKeyDown}
         placeholder="Escribe para filtrar..."
         className={inputClass}
       />
       {open && filtered.length > 0 && (
-        <ul className="absolute z-10 mt-1 w-full max-h-56 overflow-y-auto bg-white border border-gray-200 rounded-lg shadow-lg text-sm">
-          {filtered.map(s => (
+        <ul
+          id={listboxId}
+          role="listbox"
+          className="absolute z-10 mt-1 w-full max-h-56 overflow-y-auto bg-white border border-gray-200 rounded-lg shadow-lg text-sm"
+        >
+          {filtered.map((s, i) => (
             <li
               key={s}
+              id={`specialty-option-${i}`}
+              role="option"
+              aria-selected={s === value}
               onMouseDown={() => select(s)}
-              className={`px-3 py-2 cursor-pointer hover:bg-blue-50 ${s === value ? "bg-blue-50 font-medium" : ""}`}
+              className={`px-3 py-2 cursor-pointer hover:bg-blue-50 ${
+                i === activeIndex ? "bg-blue-100" : s === value ? "bg-blue-50 font-medium" : ""
+              }`}
             >
               {s}
             </li>

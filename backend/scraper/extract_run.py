@@ -80,21 +80,21 @@ def get_unextracted_files() -> list[dict]:
     if not all_files:
         return []
 
-    hashes = [f["hash"] for f in all_files]
+    # Deduplicate by hash (same URL stored in multiple date folders) before querying DB
+    hash_to_file: dict[str, dict] = {}
+    for f in all_files:
+        if f["hash"] not in hash_to_file:
+            hash_to_file[f["hash"]] = f
+
+    unique_hashes = list(hash_to_file.keys())
     done: set[str] = set()
     chunk_size = 200
-    for i in range(0, len(hashes), chunk_size):
-        chunk = hashes[i : i + chunk_size]
+    for i in range(0, len(unique_hashes), chunk_size):
+        chunk = unique_hashes[i : i + chunk_size]
         result = db.table("listings").select("url_hash").in_("url_hash", chunk).execute()
         done.update(row["url_hash"] for row in result.data)
 
-    seen: set[str] = set()
-    unique: list[dict] = []
-    for f in all_files:
-        if f["hash"] not in done and f["hash"] not in seen:
-            seen.add(f["hash"])
-            unique.append(f)
-    return unique
+    return [f for h, f in hash_to_file.items() if h not in done]
 
 
 def download_html(path: str) -> str | None:
