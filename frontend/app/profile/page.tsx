@@ -342,34 +342,44 @@ function SpecialtyCombobox({
     setActiveIndex(-1);
   }
 
+  function reconcile() {
+    setOpen(false);
+    setActiveIndex(-1);
+    const q = queryRef.current;
+    const v = valueRef.current;
+    // Prefer exact string match before falling back to normalized comparison
+    const match = options.includes(q)
+      ? q
+      : options.find(s => normalize(s) === normalize(q));
+    if (match) {
+      onChangeRef.current(match);
+      setQuery(match);
+    } else {
+      setQuery(v);
+    }
+  }
+
   // Register outside-click handler once; read latest query/value via refs
   useEffect(() => {
     function handler(e: MouseEvent) {
       if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
-        setOpen(false);
-        setActiveIndex(-1);
-        const q = queryRef.current;
-        const v = valueRef.current;
-        const match = options.find(s => normalize(s) === normalize(q));
-        if (match) {
-          onChangeRef.current(match);
-          setQuery(match);
-        } else {
-          setQuery(v);
-        }
+        reconcile();
       }
     }
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [options]);
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
     if (!open && e.key !== "Escape") setOpen(true);
     if (e.key === "ArrowDown") {
       e.preventDefault();
+      if (filtered.length === 0) { setActiveIndex(-1); return; }
       setActiveIndex(i => (i + 1) % filtered.length);
     } else if (e.key === "ArrowUp") {
       e.preventDefault();
+      if (filtered.length === 0) { setActiveIndex(-1); return; }
       setActiveIndex(i => (i <= 0 ? filtered.length - 1 : i - 1));
     } else if (e.key === "Enter") {
       e.preventDefault();
@@ -384,8 +394,14 @@ function SpecialtyCombobox({
 
   const listboxId = "specialty-listbox";
 
+  function handleContainerBlur(e: React.FocusEvent<HTMLDivElement>) {
+    if (!containerRef.current?.contains(e.relatedTarget as Node)) {
+      reconcile();
+    }
+  }
+
   return (
-    <div ref={containerRef} className="relative">
+    <div ref={containerRef} className="relative" onBlur={handleContainerBlur}>
       <input
         role="combobox"
         aria-expanded={open && filtered.length > 0}
