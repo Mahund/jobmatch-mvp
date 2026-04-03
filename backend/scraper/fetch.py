@@ -2,6 +2,7 @@ import time
 import random
 import httpx
 from bs4 import BeautifulSoup
+from urllib.parse import urldefrag
 
 BASE_URL = "https://cl.computrabajo.com"
 SEARCH_QUERIES = ["enfermera", "enfermero", "nurse"]
@@ -57,6 +58,7 @@ def get_listing_urls() -> list[str]:
                     href = a.get("href", "")
                     if href.startswith("/"):
                         href = BASE_URL + href
+                    href, _ = urldefrag(href)  # strip tracking fragment
                     if "/ofertas-de-trabajo/" in href and href not in urls:
                         urls.add(href)
                         found += 1

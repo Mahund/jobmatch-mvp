@@ -11,6 +11,7 @@ from scraper.extract import build_batch_request, html_to_text, _soup_to_text
 from scraper.extract_run import (
     _extract_title_from_soup,
     _is_enfermeria_role as extract_is_enfermeria,
+    get_unextracted_files,
     write_listing,
 )
 
@@ -199,3 +200,87 @@ class TestWriteListingConfidence:
         row = self._get_written_row(mock_db)
         assert row["url_hash"] == "myhash"
         assert row["url"] == "http://example.com/job"
+
+
+# ---------------------------------------------------------------------------
+# get_unextracted_files — chunked DB query
+# ---------------------------------------------------------------------------
+
+class TestGetUnextractedFiles:
+    def _make_mock_db(self, storage_files: list[str], already_done: list[str]):
+        """
+        Build a mock db where:
+        - storage returns one folder 'jobs' containing `storage_files`
+        - the listings table reports `already_done` hashes as already extracted
+        """
+        mock_db = MagicMock()
+
+        # Storage: top-level list returns one folder
+        folder_items = [{"name": f, "id": "file-id"} for f in storage_files]
+        mock_db.storage.from_.return_value.list.side_effect = [
+            [{"name": "jobs", "id": None}],  # root listing → one folder
+            folder_items,                    # folder listing → html files
+        ]
+
+        # DB: .in_() query returns already-done rows
+        mock_result = MagicMock()
+        mock_result.data = [{"url_hash": h} for h in already_done]
+        mock_db.table.return_value.select.return_value.in_.return_value.execute.return_value = mock_result
+
+        return mock_db
+
+    def test_returns_only_unextracted(self):
+        files = ["abc.html", "def.html", "ghi.html"]
+        done = ["abc", "ghi"]
+        mock_db = self._make_mock_db(files, done)
+
+        with patch("scraper.extract_run.get_client", return_value=mock_db):
+            result = get_unextracted_files()
+
+        hashes = [f["hash"] for f in result]
+        assert hashes == ["def"]
+
+    def test_returns_empty_when_all_extracted(self):
+        files = ["abc.html", "def.html"]
+        done = ["abc", "def"]
+        mock_db = self._make_mock_db(files, done)
+
+        with patch("scraper.extract_run.get_client", return_value=mock_db):
+            result = get_unextracted_files()
+
+        assert result == []
+
+    def test_large_file_list_chunks_db_queries(self):
+        """More than 200 files must trigger multiple .in_() calls (one per chunk)."""
+        files = [f"hash{i:04d}.html" for i in range(450)]
+        done = []
+        mock_db = self._make_mock_db(files, done)
+
+        # Make each chunk call return empty (nothing done yet)
+        mock_result = MagicMock()
+        mock_result.data = []
+        mock_db.table.return_value.select.return_value.in_.return_value.execute.return_value = mock_result
+
+        # Reset side_effect so storage list works with 450 files
+        mock_db.storage.from_.return_value.list.side_effect = [
+            [{"name": "jobs", "id": None}],
+            [{"name": f"hash{i:04d}.html", "id": "x"} for i in range(450)],
+        ]
+
+        with patch("scraper.extract_run.get_client", return_value=mock_db):
+            result = get_unextracted_files()
+
+        # 450 files → 3 chunks (200 + 200 + 50) → 3 DB calls
+        assert mock_db.table.return_value.select.return_value.in_.call_count == 3
+        assert len(result) == 450
+
+    def test_ignores_non_html_files(self):
+        files = ["abc.html", "readme.txt", "data.json"]
+        done = []
+        mock_db = self._make_mock_db(files, done)
+
+        with patch("scraper.extract_run.get_client", return_value=mock_db):
+            result = get_unextracted_files()
+
+        hashes = [f["hash"] for f in result]
+        assert hashes == ["abc"]

@@ -1,10 +1,12 @@
 import hashlib
+from urllib.parse import urldefrag
 from datetime import datetime, timezone
 from db.supabase_client import get_client
 
 
 def url_hash(url: str) -> str:
-    return hashlib.sha256(url.encode()).hexdigest()[:32]
+    clean, _ = urldefrag(url)
+    return hashlib.sha256(clean.encode()).hexdigest()[:32]
 
 
 def filter_new_urls(urls: list[str]) -> list[str]:
@@ -27,12 +29,12 @@ def mark_seen(urls: list[str]) -> None:
         return
 
     db = get_client()
-    rows = [
-        {
-            "url_hash": url_hash(u),
-            "url": u,
-            "first_seen": datetime.now(timezone.utc).isoformat(),
-        }
-        for u in urls
-    ]
+    now = datetime.now(timezone.utc).isoformat()
+    seen_hashes: set[str] = set()
+    rows = []
+    for u in urls:
+        h = url_hash(u)
+        if h not in seen_hashes:
+            seen_hashes.add(h)
+            rows.append({"url_hash": h, "url": u, "first_seen": now})
     db.table("seen_urls").upsert(rows, on_conflict="url_hash").execute()

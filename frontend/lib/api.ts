@@ -50,4 +50,6 @@ export const api = {
     apiFetch("/profile", token, { method: "POST", body: JSON.stringify(body) }),
   rematch: (token: string) =>
     apiFetch("/rematch", token, { method: "POST" }),
+  deleteAccount: (token: string) =>
+    apiFetch("/profile", token, { method: "DELETE" }),
 };

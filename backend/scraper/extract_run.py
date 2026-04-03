@@ -81,8 +81,12 @@ def get_unextracted_files() -> list[dict]:
         return []
 
     hashes = [f["hash"] for f in all_files]
-    result = db.table("listings").select("url_hash").in_("url_hash", hashes).execute()
-    done = {row["url_hash"] for row in result.data}
+    done: set[str] = set()
+    chunk_size = 200
+    for i in range(0, len(hashes), chunk_size):
+        chunk = hashes[i : i + chunk_size]
+        result = db.table("listings").select("url_hash").in_("url_hash", chunk).execute()
+        done.update(row["url_hash"] for row in result.data)
 
     return [f for f in all_files if f["hash"] not in done]
 
@@ -99,8 +103,13 @@ def download_html(path: str) -> str | None:
 
 def get_urls_for_hashes(hashes: list[str]) -> dict[str, str]:
     db = get_client()
-    result = db.table("seen_urls").select("url_hash,url").in_("url_hash", hashes).execute()
-    return {row["url_hash"]: row["url"] for row in result.data}
+    url_map: dict[str, str] = {}
+    chunk_size = 200
+    for i in range(0, len(hashes), chunk_size):
+        chunk = hashes[i : i + chunk_size]
+        result = db.table("seen_urls").select("url_hash,url").in_("url_hash", chunk).execute()
+        url_map.update({row["url_hash"]: row["url"] for row in result.data})
+    return url_map
 
 
 def write_listing(hash_: str, url: str, fields: dict) -> None:
