@@ -32,7 +32,11 @@ export default function LoginPage() {
         router.push("/matches");
       }
     } else if (mode === "signup") {
-      const { data, error } = await supabase.auth.signUp({ email, password });
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: { emailRedirectTo: `${window.location.origin}/matches` },
+      });
       if (error) {
         setError(error.message);
         setLoading(false);
