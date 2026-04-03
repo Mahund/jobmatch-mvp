@@ -11,12 +11,13 @@ from db.supabase_client import get_client
 NEWNESS_WINDOW = timedelta(hours=48)
 
 
-def _is_recent(first_seen_iso: str | None) -> bool:
-    """Return True if first_seen is within the newness window."""
-    if not first_seen_iso:
+def _is_recent(first_seen_iso: str | None, published_date: str | None = None) -> bool:
+    """Return True if the listing is recent, preferring published_date over first_seen."""
+    ref = published_date or first_seen_iso
+    if not ref:
         return False
     try:
-        dt = datetime.fromisoformat(first_seen_iso)
+        dt = datetime.fromisoformat(ref)
         if dt.tzinfo is None:
             dt = dt.replace(tzinfo=timezone.utc)
         return datetime.now(timezone.utc) - dt < NEWNESS_WINDOW
@@ -191,7 +192,7 @@ def run_matching(profile: Profile, write_results: bool = True) -> list[dict]:
             "score": score,
             "filter_passed": True,
             "specialty_tier": tier,
-            "is_new": _is_recent(first_seen_map.get(listing["url_hash"])),
+            "is_new": _is_recent(first_seen_map.get(listing["url_hash"]), listing.get("published_date")),
             # for return value only (not written to DB):
             "_listing": listing,
         })

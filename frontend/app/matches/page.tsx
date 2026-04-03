@@ -34,6 +34,7 @@ export default function MatchesPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
+  const [sort, setSort] = useState<"score" | "published_date">("score");
 
   useEffect(() => {
     async function load() {
@@ -45,7 +46,7 @@ export default function MatchesPage() {
       if (!session) { router.push("/"); return; }
 
       try {
-        const data = await api.getMatches(session.access_token, page, PAGE_SIZE);
+        const data = await api.getMatches(session.access_token, page, PAGE_SIZE, sort);
         setMatches(data.matches);
         const newTotal = data.total ?? 0;
         setTotal(newTotal);
@@ -66,7 +67,7 @@ export default function MatchesPage() {
       }
     }
     load();
-  }, [router, page]);
+  }, [router, page, sort]);
 
   async function handleSignOut() {
     const supabase = createClient();
@@ -91,9 +92,19 @@ export default function MatchesPage() {
           <h2 className="text-xl font-semibold text-gray-900">
             {loading ? "Cargando..." : `${total} empleos para ti`}
           </h2>
-          {lastUpdated && !loading && (
-            <span className="text-xs text-gray-400">Actualizado {timeAgo(lastUpdated)}</span>
-          )}
+          <div className="flex items-center gap-3">
+            {lastUpdated && !loading && (
+              <span className="text-xs text-gray-400">Actualizado {timeAgo(lastUpdated)}</span>
+            )}
+            {!loading && total > 0 && (
+              <button
+                onClick={() => { setSort(s => s === "score" ? "published_date" : "score"); setPage(1); }}
+                className="text-xs text-blue-600 hover:underline"
+              >
+                {sort === "score" ? "Más recientes" : "Por relevancia"}
+              </button>
+            )}
+          </div>
         </div>
 
         {error && <p className="text-sm text-red-600 mb-4">{error}</p>}
