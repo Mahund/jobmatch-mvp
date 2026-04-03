@@ -324,12 +324,14 @@ function SpecialtyCombobox({
   const valueRef = useRef(value);
   const onChangeRef = useRef(onChange);
 
-  useEffect(() => { queryRef.current = query; }, [query]);
+  // Keep queryRef in sync synchronously so reconcile() never sees a stale query
+  function updateQuery(q: string) { queryRef.current = q; setQuery(q); }
+
   useEffect(() => { valueRef.current = value; }, [value]);
   useEffect(() => { onChangeRef.current = onChange; }, [onChange]);
 
   // Keep query in sync when value is set externally (e.g. profile load)
-  useEffect(() => { setQuery(value); }, [value]);
+  useEffect(() => { updateQuery(value); }, [value]);
 
   const filtered = query.trim() === ""
     ? options
@@ -337,7 +339,7 @@ function SpecialtyCombobox({
 
   function select(s: string) {
     onChangeRef.current(s);
-    setQuery(s);
+    updateQuery(s);
     setOpen(false);
     setActiveIndex(-1);
   }
@@ -353,9 +355,9 @@ function SpecialtyCombobox({
       : options.find(s => normalize(s) === normalize(q));
     if (match) {
       onChangeRef.current(match);
-      setQuery(match);
+      updateQuery(match);
     } else {
-      setQuery(v);
+      updateQuery(v);
     }
   }
 
@@ -388,7 +390,7 @@ function SpecialtyCombobox({
     } else if (e.key === "Escape") {
       setOpen(false);
       setActiveIndex(-1);
-      setQuery(value);
+      updateQuery(value);
     }
   }
 
@@ -409,7 +411,7 @@ function SpecialtyCombobox({
         aria-autocomplete="list"
         aria-activedescendant={activeIndex >= 0 ? `specialty-option-${activeIndex}` : undefined}
         value={query}
-        onChange={e => { setQuery(e.target.value); setOpen(true); setActiveIndex(-1); }}
+        onChange={e => { updateQuery(e.target.value); setOpen(true); setActiveIndex(-1); }}
         onFocus={() => setOpen(true)}
         onKeyDown={handleKeyDown}
         placeholder="Escribe para filtrar..."
@@ -427,7 +429,7 @@ function SpecialtyCombobox({
               id={`specialty-option-${i}`}
               role="option"
               aria-selected={s === value}
-              onMouseDown={() => select(s)}
+              onMouseDown={(e) => { e.preventDefault(); select(s); }}
               className={`px-3 py-2 cursor-pointer hover:bg-blue-50 ${
                 i === activeIndex ? "bg-blue-100" : s === value ? "bg-blue-50 font-medium" : ""
               }`}
