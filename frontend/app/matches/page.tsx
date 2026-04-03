@@ -110,8 +110,8 @@ export default function MatchesPage() {
         <div className="space-y-3">
           {loading
             ? Array.from({ length: 5 }).map((_, i) => <SkeletonCard key={i} />)
-            : matches.map((match, i) => (
-                <JobCard key={i} match={match as Parameters<typeof JobCard>[0]["match"]} />
+            : matches.map((match) => (
+                <JobCard key={(match as { listings: { url_hash: string } }).listings.url_hash} match={match as Parameters<typeof JobCard>[0]["match"]} />
               ))}
         </div>
 
