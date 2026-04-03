@@ -351,3 +351,143 @@ class TestRunMatching:
         with patch("matching.engine.get_client", return_value=_mock_db_with_listings([])):
             results = run_matching(self._profile(), write_results=False)
         assert results == []
+
+
+# ---------------------------------------------------------------------------
+# _is_recent
+# ---------------------------------------------------------------------------
+
+from datetime import datetime, timezone, timedelta
+from matching.engine import _is_recent, NEWNESS_WINDOW
+
+
+class TestIsRecent:
+    def test_within_window_returns_true(self):
+        recent = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
+        assert _is_recent(recent) is True
+
+    def test_outside_window_returns_false(self):
+        old = (datetime.now(timezone.utc) - timedelta(hours=72)).isoformat()
+        assert _is_recent(old) is False
+
+    def test_exactly_at_boundary_returns_false(self):
+        # Just past the window
+        boundary = (datetime.now(timezone.utc) - NEWNESS_WINDOW - timedelta(seconds=1)).isoformat()
+        assert _is_recent(boundary) is False
+
+    def test_none_returns_false(self):
+        assert _is_recent(None) is False
+
+    def test_empty_string_returns_false(self):
+        assert _is_recent("") is False
+
+    def test_invalid_iso_returns_false(self):
+        assert _is_recent("not-a-date") is False
+
+    def test_z_suffix_handled(self):
+        recent = (datetime.now(timezone.utc) - timedelta(hours=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        assert _is_recent(recent) is True
+
+    def test_naive_datetime_treated_as_utc(self):
+        recent_naive = (datetime.now(timezone.utc) - timedelta(hours=1)).replace(tzinfo=None).isoformat()
+        assert _is_recent(recent_naive) is True
+
+
+# ---------------------------------------------------------------------------
+# run_matching — write_results=True path
+# ---------------------------------------------------------------------------
+
+def _mock_db_full(listings, seen_rows=None):
+    """Mock DB that handles listings select, seen_urls select, upsert, and delete chains."""
+    mock_db = MagicMock()
+
+    # listings query: table("listings").select("*").eq(...).execute()
+    listings_table = MagicMock()
+    listings_table.select.return_value.eq.return_value.execute.return_value.data = listings
+
+    # seen_urls query: table("seen_urls").select(...).in_(...).execute()
+    seen_table = MagicMock()
+    seen_table.select.return_value.in_.return_value.execute.return_value.data = seen_rows or []
+
+    # matches table: upsert and delete chains
+    matches_table = MagicMock()
+    matches_table.upsert.return_value.execute.return_value = MagicMock()
+    delete_chain = MagicMock()
+    delete_chain.eq.return_value = delete_chain
+    delete_chain.not_ = MagicMock()
+    delete_chain.not_.in_.return_value = delete_chain
+    delete_chain.execute.return_value = MagicMock()
+    matches_table.delete.return_value = delete_chain
+
+    _tables = {"listings": listings_table, "seen_urls": seen_table, "matches": matches_table}
+    mock_db.table.side_effect = lambda name: _tables[name]
+    mock_db._tables = _tables  # expose for assertions
+    return mock_db
+
+
+class TestRunMatchingWriteResults:
+    def _profile(self):
+        return _make_profile(user_id="u1", region="Metropolitana", specialty="UCI", years_experience=2)
+
+    def test_upsert_called_with_passing_rows(self):
+        listings = [_make_listing(url_hash="h1", specialty="UCI adulto")]
+        mock_db = _mock_db_full(listings)
+        with patch("matching.engine.get_client", return_value=mock_db):
+            results = run_matching(self._profile(), write_results=True)
+        assert len(results) == 1
+        matches_table = mock_db._tables["matches"]
+        upsert_call = matches_table.upsert.call_args
+        rows = upsert_call[0][0]
+        assert len(rows) == 1
+        assert rows[0]["listing_hash"] == "h1"
+        assert "_listing" not in rows[0]
+
+    def test_delete_called_scoped_to_user(self):
+        listings = [_make_listing(url_hash="h1")]
+        mock_db = _mock_db_full(listings)
+        with patch("matching.engine.get_client", return_value=mock_db):
+            run_matching(self._profile(), write_results=True)
+        delete_chain = mock_db._tables["matches"].delete.return_value
+        delete_chain.eq.assert_called_with("user_id", "u1")
+
+    def test_stale_delete_excludes_passing_hashes(self):
+        listings = [_make_listing(url_hash="h1")]
+        mock_db = _mock_db_full(listings)
+        with patch("matching.engine.get_client", return_value=mock_db):
+            run_matching(self._profile(), write_results=True)
+        delete_chain = mock_db._tables["matches"].delete.return_value
+        not_in_call = delete_chain.eq.return_value.not_.in_.call_args
+        assert not_in_call[0] == ("listing_hash", ["h1"])
+
+    def test_is_new_true_when_first_seen_recent(self):
+        listings = [_make_listing(url_hash="h1")]
+        recent_iso = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
+        seen_rows = [{"url_hash": "h1", "first_seen": recent_iso}]
+        mock_db = _mock_db_full(listings, seen_rows)
+        with patch("matching.engine.get_client", return_value=mock_db):
+            results = run_matching(self._profile(), write_results=True)
+        assert results[0]["is_new"] is True
+
+    def test_is_new_false_when_first_seen_old(self):
+        listings = [_make_listing(url_hash="h1")]
+        old_iso = (datetime.now(timezone.utc) - timedelta(hours=72)).isoformat()
+        seen_rows = [{"url_hash": "h1", "first_seen": old_iso}]
+        mock_db = _mock_db_full(listings, seen_rows)
+        with patch("matching.engine.get_client", return_value=mock_db):
+            results = run_matching(self._profile(), write_results=True)
+        assert results[0]["is_new"] is False
+
+    def test_is_new_false_when_not_in_seen_urls(self):
+        listings = [_make_listing(url_hash="h1")]
+        mock_db = _mock_db_full(listings, seen_rows=[])
+        with patch("matching.engine.get_client", return_value=mock_db):
+            results = run_matching(self._profile(), write_results=True)
+        assert results[0]["is_new"] is False
+
+    def test_no_upsert_when_no_passing_listings(self):
+        # All listings fail hard filters
+        listings = [_make_listing(title="Técnico en Enfermería")]
+        mock_db = _mock_db_full(listings)
+        with patch("matching.engine.get_client", return_value=mock_db):
+            run_matching(self._profile(), write_results=True)
+        mock_db._tables["matches"].upsert.assert_not_called()

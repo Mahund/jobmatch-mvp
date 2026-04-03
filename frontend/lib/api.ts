@@ -26,8 +26,9 @@ async function apiFetch(path: string, token: string, options?: RequestInit): Pro
         },
       });
       if (retry.ok) return retry.json();
+      if (retry.status !== 401) throw new Error(`API error ${retry.status}`);
     }
-    // Redirect to login if refresh fails
+    // Redirect to login if refresh fails or retry is also 401
     if (typeof window !== "undefined") window.location.href = "/";
     throw new Error("Session expired");
   }

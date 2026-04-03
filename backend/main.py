@@ -5,7 +5,8 @@ from routes import matches, profile, rematch
 
 app = FastAPI(title="JobMatch API")
 
-_origins = os.environ.get("ALLOWED_ORIGINS", "http://localhost:3000").split(",")
+_raw = os.environ.get("ALLOWED_ORIGINS", "http://localhost:3000")
+_origins = [o.strip() for o in _raw.split(",") if o.strip()] or ["http://localhost:3000"]
 
 app.add_middleware(
     CORSMiddleware,

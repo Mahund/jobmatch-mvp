@@ -28,15 +28,20 @@ export default function LoginPage() {
         setError(error.message);
         setLoading(false);
       } else {
+        setLoading(false);
         router.push("/matches");
       }
     } else if (mode === "signup") {
-      const { error } = await supabase.auth.signUp({ email, password });
+      const { data, error } = await supabase.auth.signUp({ email, password });
       if (error) {
         setError(error.message);
         setLoading(false);
-      } else {
+      } else if (data.session) {
+        setLoading(false);
         router.push("/profile");
+      } else {
+        setMessage("Revisa tu correo para confirmar tu cuenta antes de iniciar sesión.");
+        setLoading(false);
       }
     } else if (mode === "forgot") {
       const { error } = await supabase.auth.resetPasswordForEmail(email, {

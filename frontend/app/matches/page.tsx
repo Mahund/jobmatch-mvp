@@ -39,6 +39,7 @@ export default function MatchesPage() {
     async function load() {
       setLoading(true);
       setError("");
+      setLastUpdated(null);
       const supabase = createClient();
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) { router.push("/"); return; }
@@ -51,9 +52,7 @@ export default function MatchesPage() {
         const dates = data.matches
           .map((m: object) => (m as { matched_at?: string }).matched_at)
           .filter(Boolean) as string[];
-        if (dates.length > 0) {
-          setLastUpdated(dates.sort().reverse()[0]);
-        }
+        setLastUpdated(dates.length > 0 ? dates.sort().reverse()[0] : null);
       } catch {
         setError("Error al cargar los empleos. Intenta de nuevo.");
       } finally {
