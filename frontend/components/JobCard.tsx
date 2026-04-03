@@ -11,6 +11,17 @@ interface Listing {
   summary: string | null;
   modality: string | null;
   years_experience: number;
+  published_date: string | null;
+}
+
+function daysAgo(dateStr: string | null): string | null {
+  if (!dateStr) return null;
+  const diff = Math.floor((Date.now() - new Date(dateStr).getTime()) / 86_400_000);
+  if (diff < 0) return null;
+  if (diff === 0) return "Hoy";
+  if (diff === 1) return "Ayer";
+  if (diff <= 30) return `Hace ${diff} días`;
+  return null;
 }
 
 interface Match {
@@ -67,6 +78,18 @@ export default function JobCard({ match }: { match: Match }) {
         {l.schedule && <span>· {l.schedule}</span>}
         {l.salary_raw && l.salary_raw !== "A convenir" && <span>· {l.salary_raw}</span>}
         {l.years_experience > 0 && <span>· {l.years_experience}+ años exp.</span>}
+        {(() => {
+          const ago = daysAgo(l.published_date);
+          if (!ago) return null;
+          const isStale = l.published_date
+            ? (Date.now() - new Date(l.published_date).getTime()) / 86_400_000 > 14
+            : false;
+          return (
+            <span className={isStale ? "text-orange-500" : ""}>
+              · {isStale ? "⚠️ " : ""}{ago}
+            </span>
+          );
+        })()}
       </div>
     </a>
   );

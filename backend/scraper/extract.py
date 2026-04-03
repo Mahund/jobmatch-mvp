@@ -39,7 +39,15 @@ EXTRACT_TOOL = {
                 "enum": ["junior", "mid", "senior", "unknown"]
             },
             "summary": {"type": "string"},
-            "confidence": {"type": "number", "minimum": 0, "maximum": 1}
+            "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+            "published_date": {
+                "type": "string",
+                "description": (
+                    "Publication date in ISO 8601 format (YYYY-MM-DD). "
+                    "Convert relative phrases like 'Publicado hace 3 días' to an absolute date "
+                    "based on today's date. Return null if no publication date is found."
+                )
+            }
         },
         "required": [
             "title", "company", "city", "region", "contract_type",
@@ -52,7 +60,9 @@ EXTRACT_TOOL = {
 SYSTEM_PROMPT = (
     "Extract structured fields from a Chilean nursing job listing. "
     "Only state what is explicitly written; use null or [] for missing fields. "
-    "Text in Spanish except enum values. Max 6 responsibilities."
+    "Text in Spanish except enum values. Max 6 responsibilities. "
+    "For published_date, convert relative phrases like 'hace 3 días' to YYYY-MM-DD using today's date. "
+    "Return null for published_date if no publication date is present."
 )
 
 
