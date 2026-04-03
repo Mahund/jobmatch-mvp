@@ -4,24 +4,55 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase";
 
+type Mode = "login" | "signup" | "forgot";
+
 export default function LoginPage() {
   const router = useRouter();
+  const [mode, setMode] = useState<Mode>("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
+    setMessage("");
     setLoading(true);
     const supabase = createClient();
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) {
-      setError(error.message);
+
+    if (mode === "login") {
+      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      if (error) {
+        setError(error.message);
+        setLoading(false);
+      } else {
+        setLoading(false);
+        router.push("/matches");
+      }
+    } else if (mode === "signup") {
+      const { data, error } = await supabase.auth.signUp({ email, password });
+      if (error) {
+        setError(error.message);
+        setLoading(false);
+      } else if (data.session) {
+        setLoading(false);
+        router.push("/profile");
+      } else {
+        setMessage("Revisa tu correo para confirmar tu cuenta antes de iniciar sesión.");
+        setLoading(false);
+      }
+    } else if (mode === "forgot") {
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: `${window.location.origin}/reset-password`,
+      });
       setLoading(false);
-    } else {
-      router.push("/matches");
+      if (error) {
+        setError(error.message);
+      } else {
+        setMessage("Revisa tu correo para el enlace de recuperación.");
+      }
     }
   }
 
@@ -42,27 +73,71 @@ export default function LoginPage() {
               className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
-            <input
-              type="password"
-              required
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
+
+          {mode !== "forgot" && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Contraseña</label>
+              <input
+                type="password"
+                required
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+          )}
 
           {error && <p className="text-sm text-red-600">{error}</p>}
+          {message && <p className="text-sm text-green-600">{message}</p>}
 
           <button
             type="submit"
             disabled={loading}
             className="w-full bg-blue-600 text-white rounded-lg py-2 text-sm font-medium hover:bg-blue-700 disabled:opacity-50 transition-colors"
           >
-            {loading ? "Signing in..." : "Sign in"}
+            {loading
+              ? "..."
+              : mode === "login"
+              ? "Iniciar sesión"
+              : mode === "signup"
+              ? "Crear cuenta"
+              : "Enviar enlace"}
           </button>
         </form>
+
+        <div className="mt-4 space-y-2 text-center text-sm text-gray-500">
+          {mode === "login" && (
+            <>
+              <p>
+                ¿No tienes cuenta?{" "}
+                <button
+                  onClick={() => { setMode("signup"); setError(""); setMessage(""); }}
+                  className="text-blue-600 hover:underline"
+                >
+                  Crear cuenta
+                </button>
+              </p>
+              <p>
+                <button
+                  onClick={() => { setMode("forgot"); setError(""); setMessage(""); }}
+                  className="text-blue-600 hover:underline"
+                >
+                  ¿Olvidaste tu contraseña?
+                </button>
+              </p>
+            </>
+          )}
+          {mode !== "login" && (
+            <p>
+              <button
+                onClick={() => { setMode("login"); setError(""); setMessage(""); }}
+                className="text-blue-600 hover:underline"
+              >
+                ← Volver
+              </button>
+            </p>
+          )}
+        </div>
       </div>
     </main>
   );

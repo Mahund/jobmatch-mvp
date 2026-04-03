@@ -4,8 +4,24 @@ Takes a user profile and scores all listings using hard filters + specialty sign
 Returns ranked matches and writes them to the matches table.
 """
 from dataclasses import dataclass
+from datetime import datetime, timezone, timedelta
 import unicodedata
 from db.supabase_client import get_client
+
+NEWNESS_WINDOW = timedelta(hours=48)
+
+
+def _is_recent(first_seen_iso: str | None) -> bool:
+    """Return True if first_seen is within the newness window."""
+    if not first_seen_iso:
+        return False
+    try:
+        dt = datetime.fromisoformat(first_seen_iso)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return datetime.now(timezone.utc) - dt < NEWNESS_WINDOW
+    except ValueError:
+        return False
 
 
 @dataclass
@@ -149,8 +165,18 @@ def run_matching(profile: Profile, write_results: bool = True) -> list[dict]:
     db = get_client()
     listings = db.table("listings").select("*").eq("extraction_status", "ok").execute().data
 
-    if write_results:
-        db.table("matches").delete().eq("user_id", profile.user_id).execute()
+    # Build a first_seen lookup so we can compute is_new without hardcoding it.
+    first_seen_map: dict[str, str] = {}
+    if write_results and listings:
+        all_hashes = [l["url_hash"] for l in listings]
+        seen_rows = (
+            db.table("seen_urls")
+            .select("url_hash, first_seen")
+            .in_("url_hash", all_hashes)
+            .execute()
+            .data
+        )
+        first_seen_map = {r["url_hash"]: r["first_seen"] for r in seen_rows}
 
     matches = []
     for listing in listings:
@@ -165,16 +191,23 @@ def run_matching(profile: Profile, write_results: bool = True) -> list[dict]:
             "score": score,
             "filter_passed": True,
             "specialty_tier": tier,
-            "is_new": True,
+            "is_new": _is_recent(first_seen_map.get(listing["url_hash"])),
             # for return value only (not written to DB):
             "_listing": listing,
         })
 
     matches.sort(key=lambda m: m["score"], reverse=True)
 
-    if write_results and matches:
-        rows = [{k: v for k, v in m.items() if not k.startswith("_")} for m in matches]
-        db.table("matches").upsert(rows, on_conflict="listing_hash,user_id").execute()
+    if write_results:
+        passing_hashes = [m["listing_hash"] for m in matches]
+        if matches:
+            rows = [{k: v for k, v in m.items() if not k.startswith("_")} for m in matches]
+            db.table("matches").upsert(rows, on_conflict="listing_hash,user_id").execute()
+        # Remove matches for listings that no longer pass filters (delisted jobs, changed criteria)
+        q = db.table("matches").delete().eq("user_id", profile.user_id)
+        if passing_hashes:
+            q = q.not_.in_("listing_hash", passing_hashes)
+        q.execute()
 
     return matches
 

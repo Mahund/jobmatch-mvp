@@ -9,7 +9,6 @@ const CONTRACT_OPTIONS = ["full-time", "part-time", "per diem", "contract", "tem
 
 export default function ProfilePage() {
   const router = useRouter();
-  const [token, setToken] = useState("");
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState("");
@@ -29,10 +28,17 @@ export default function ProfilePage() {
       const supabase = createClient();
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) { router.push("/"); return; }
-      setToken(session.access_token);
 
       try {
-        const profile = await api.getProfile(session.access_token);
+        const profile = await api.getProfile(session.access_token) as {
+          specialty?: string;
+          years_experience?: number;
+          region?: string;
+          accepted_contracts?: string[];
+          preferred_schedule?: string | null;
+          min_salary?: number | null;
+          licensure_held?: string[];
+        };
         setForm({
           specialty: profile.specialty ?? "",
           years_experience: profile.years_experience ?? 0,
@@ -42,8 +48,12 @@ export default function ProfilePage() {
           min_salary: profile.min_salary ? String(profile.min_salary) : "",
           licensure_held: (profile.licensure_held ?? []).join(", "),
         });
-      } catch {
-        // no profile yet — blank form is fine
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (!msg.includes("404") && !msg.includes("No rows")) {
+          setError("Error al cargar el perfil. Intenta de nuevo.");
+        }
+        // else: no profile yet — blank form is fine
       }
     }
     load();
@@ -63,7 +73,10 @@ export default function ProfilePage() {
     setSaving(true);
     setError("");
     try {
-      await api.saveProfile(token, {
+      const supabase = createClient();
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) { router.push("/"); return; }
+      await api.saveProfile(session.access_token, {
         specialty: form.specialty,
         years_experience: Number(form.years_experience),
         region: form.region,
@@ -74,7 +87,9 @@ export default function ProfilePage() {
           ? form.licensure_held.split(",").map(s => s.trim()).filter(Boolean)
           : [],
       });
-      await api.rematch(token);
+      // Re-fetch session in case apiFetch refreshed the token during saveProfile
+      const { data: { session: s2 } } = await supabase.auth.getSession();
+      await api.rematch((s2 ?? session).access_token);
       setSaved(true);
       setTimeout(() => { router.push("/matches"); }, 1000);
     } catch {
@@ -140,6 +155,20 @@ export default function ProfilePage() {
                 </button>
               ))}
             </div>
+          </Field>
+
+          <Field label="Turno preferido">
+            <select
+              value={form.preferred_schedule}
+              onChange={e => setForm(f => ({ ...f, preferred_schedule: e.target.value }))}
+              className={inputClass}
+            >
+              <option value="">Sin preferencia</option>
+              <option value="diurno">Diurno</option>
+              <option value="nocturno">Nocturno</option>
+              <option value="rotativo">Rotativo</option>
+              <option value="por turnos">Por turnos</option>
+            </select>
           </Field>
 
           <Field label="Licencias / habilitaciones (separadas por coma)">
