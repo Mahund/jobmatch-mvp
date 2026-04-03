@@ -88,7 +88,13 @@ def get_unextracted_files() -> list[dict]:
         result = db.table("listings").select("url_hash").in_("url_hash", chunk).execute()
         done.update(row["url_hash"] for row in result.data)
 
-    return [f for f in all_files if f["hash"] not in done]
+    seen: set[str] = set()
+    unique: list[dict] = []
+    for f in all_files:
+        if f["hash"] not in done and f["hash"] not in seen:
+            seen.add(f["hash"])
+            unique.append(f)
+    return unique
 
 
 def download_html(path: str) -> str | None:
