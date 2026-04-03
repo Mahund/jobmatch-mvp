@@ -47,7 +47,13 @@ export default function MatchesPage() {
       try {
         const data = await api.getMatches(session.access_token, page, PAGE_SIZE);
         setMatches(data.matches);
-        setTotal(data.total ?? 0);
+        const newTotal = data.total ?? 0;
+        setTotal(newTotal);
+        const newTotalPages = Math.ceil(newTotal / PAGE_SIZE);
+        if (page > Math.max(1, newTotalPages)) {
+          setPage(1);
+          return;
+        }
         // Pick the most recent matched_at as the last-updated timestamp
         const dates = data.matches
           .map((m: object) => (m as { matched_at?: string }).matched_at)

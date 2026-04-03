@@ -2,15 +2,18 @@
 Unit tests for matching/engine.py — the core pipeline business logic.
 No DB or network calls; all pure functions.
 """
+from datetime import datetime, timezone, timedelta
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 from matching.engine import (
+    NEWNESS_WINDOW,
     SPECIALTY_TIERS,
     Profile,
     _get_specialty_group,
     _is_enfermeria_role,
+    _is_recent,
     _normalize_text,
     _passes_hard_filters,
     _score,
@@ -357,9 +360,6 @@ class TestRunMatching:
 # _is_recent
 # ---------------------------------------------------------------------------
 
-from datetime import datetime, timezone, timedelta
-from matching.engine import _is_recent, NEWNESS_WINDOW
-
 
 class TestIsRecent:
     def test_within_window_returns_true(self):
@@ -370,8 +370,8 @@ class TestIsRecent:
         old = (datetime.now(timezone.utc) - timedelta(hours=72)).isoformat()
         assert _is_recent(old) is False
 
-    def test_exactly_at_boundary_returns_false(self):
-        # Just past the window
+    def test_just_past_boundary_returns_false(self):
+        # One second beyond the newness window
         boundary = (datetime.now(timezone.utc) - NEWNESS_WINDOW - timedelta(seconds=1)).isoformat()
         assert _is_recent(boundary) is False
 

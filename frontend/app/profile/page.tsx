@@ -9,7 +9,6 @@ const CONTRACT_OPTIONS = ["full-time", "part-time", "per diem", "contract", "tem
 
 export default function ProfilePage() {
   const router = useRouter();
-  const [token, setToken] = useState("");
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState("");
@@ -29,7 +28,6 @@ export default function ProfilePage() {
       const supabase = createClient();
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) { router.push("/"); return; }
-      setToken(session.access_token);
 
       try {
         const profile = await api.getProfile(session.access_token) as {
@@ -75,7 +73,10 @@ export default function ProfilePage() {
     setSaving(true);
     setError("");
     try {
-      await api.saveProfile(token, {
+      const supabase = createClient();
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) { router.push("/"); return; }
+      await api.saveProfile(session.access_token, {
         specialty: form.specialty,
         years_experience: Number(form.years_experience),
         region: form.region,
@@ -86,7 +87,9 @@ export default function ProfilePage() {
           ? form.licensure_held.split(",").map(s => s.trim()).filter(Boolean)
           : [],
       });
-      await api.rematch(token);
+      // Re-fetch session in case apiFetch refreshed the token during saveProfile
+      const { data: { session: s2 } } = await supabase.auth.getSession();
+      await api.rematch((s2 ?? session).access_token);
       setSaved(true);
       setTimeout(() => { router.push("/matches"); }, 1000);
     } catch {
