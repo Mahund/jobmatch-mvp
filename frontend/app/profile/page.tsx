@@ -32,7 +32,15 @@ export default function ProfilePage() {
       setToken(session.access_token);
 
       try {
-        const profile = await api.getProfile(session.access_token);
+        const profile = await api.getProfile(session.access_token) as {
+          specialty?: string;
+          years_experience?: number;
+          region?: string;
+          accepted_contracts?: string[];
+          preferred_schedule?: string | null;
+          min_salary?: number | null;
+          licensure_held?: string[];
+        };
         setForm({
           specialty: profile.specialty ?? "",
           years_experience: profile.years_experience ?? 0,
@@ -42,8 +50,12 @@ export default function ProfilePage() {
           min_salary: profile.min_salary ? String(profile.min_salary) : "",
           licensure_held: (profile.licensure_held ?? []).join(", "),
         });
-      } catch {
-        // no profile yet — blank form is fine
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (!msg.includes("404") && !msg.includes("No rows")) {
+          setError("Error al cargar el perfil. Intenta de nuevo.");
+        }
+        // else: no profile yet — blank form is fine
       }
     }
     load();
@@ -140,6 +152,20 @@ export default function ProfilePage() {
                 </button>
               ))}
             </div>
+          </Field>
+
+          <Field label="Turno preferido">
+            <select
+              value={form.preferred_schedule}
+              onChange={e => setForm(f => ({ ...f, preferred_schedule: e.target.value }))}
+              className={inputClass}
+            >
+              <option value="">Sin preferencia</option>
+              <option value="diurno">Diurno</option>
+              <option value="nocturno">Nocturno</option>
+              <option value="rotativo">Rotativo</option>
+              <option value="por turnos">Por turnos</option>
+            </select>
           </Field>
 
           <Field label="Licencias / habilitaciones (separadas por coma)">
