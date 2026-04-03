@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase";
 import { api } from "@/lib/api";
@@ -36,7 +36,6 @@ const SPECIALTY_OPTIONS = [
   "Hemodiálisis",
   "Hospitalización",
   "Medicina pediátrica",
-  "Medico Quirurgico",
   "Médico Quirúrgico",
   "Pabellón",
   "Pabellón Quirúrgico",
@@ -186,8 +185,9 @@ export default function ProfilePage() {
         <h2 className="text-xl font-semibold text-gray-900 mb-6">Tu perfil</h2>
 
         <form onSubmit={handleSave} className="space-y-5">
-          <Field label="Especialidad">
+          <Field label="Especialidad" htmlFor="specialty-input">
             <SpecialtyCombobox
+              id="specialty-input"
               value={form.specialty}
               onChange={v => setForm(f => ({ ...f, specialty: v }))}
               options={specialtyOptions}
@@ -294,10 +294,10 @@ export default function ProfilePage() {
 const inputClass =
   "w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 placeholder:text-gray-500";
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({ label, htmlFor, children }: { label: string; htmlFor?: string; children: React.ReactNode }) {
   return (
     <div>
-      <label className="block text-sm font-medium text-gray-700 mb-1.5">{label}</label>
+      <label htmlFor={htmlFor} className="block text-sm font-medium text-gray-700 mb-1.5">{label}</label>
       {children}
     </div>
   );
@@ -308,10 +308,12 @@ function normalize(s: string) {
 }
 
 function SpecialtyCombobox({
+  id,
   value,
   onChange,
   options,
 }: {
+  id?: string;
   value: string;
   onChange: (v: string) => void;
   options: string[];
@@ -323,12 +325,14 @@ function SpecialtyCombobox({
   const queryRef = useRef(query);
   const valueRef = useRef(value);
   const onChangeRef = useRef(onChange);
+  const optionsRef = useRef(options);
 
   // Keep queryRef in sync synchronously so reconcile() never sees a stale query
   function updateQuery(q: string) { queryRef.current = q; setQuery(q); }
 
   useEffect(() => { valueRef.current = value; }, [value]);
   useEffect(() => { onChangeRef.current = onChange; }, [onChange]);
+  useEffect(() => { optionsRef.current = options; }, [options]);
 
   // Keep query in sync when value is set externally (e.g. profile load)
   useEffect(() => { updateQuery(value); }, [value]);
@@ -344,24 +348,28 @@ function SpecialtyCombobox({
     setActiveIndex(-1);
   }
 
-  function reconcile() {
+  // All data read from refs so this is stable and the effect below registers once
+  const reconcile = useCallback(() => {
     setOpen(false);
     setActiveIndex(-1);
     const q = queryRef.current;
     const v = valueRef.current;
+    const opts = optionsRef.current;
     // Prefer exact string match before falling back to normalized comparison
-    const match = options.includes(q)
+    const match = opts.includes(q)
       ? q
-      : options.find(s => normalize(s) === normalize(q));
+      : opts.find(s => normalize(s) === normalize(q));
     if (match) {
       onChangeRef.current(match);
-      updateQuery(match);
+      queryRef.current = match;
+      setQuery(match);
     } else {
-      updateQuery(v);
+      queryRef.current = v;
+      setQuery(v);
     }
-  }
+  }, []);
 
-  // Register outside-click handler once; read latest query/value via refs
+  // Register outside-click handler once; read latest state via refs
   useEffect(() => {
     function handler(e: MouseEvent) {
       if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
@@ -370,8 +378,7 @@ function SpecialtyCombobox({
     }
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [options]);
+  }, [reconcile]);
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
     if (!open && e.key !== "Escape") setOpen(true);
@@ -405,9 +412,10 @@ function SpecialtyCombobox({
   return (
     <div ref={containerRef} className="relative" onBlur={handleContainerBlur}>
       <input
+        id={id}
         role="combobox"
         aria-expanded={open && filtered.length > 0}
-        aria-controls={listboxId}
+        aria-controls={open && filtered.length > 0 ? listboxId : undefined}
         aria-autocomplete="list"
         aria-activedescendant={activeIndex >= 0 ? `specialty-option-${activeIndex}` : undefined}
         value={query}
