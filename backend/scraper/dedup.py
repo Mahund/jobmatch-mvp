@@ -1,10 +1,12 @@
 import hashlib
+from urllib.parse import urldefrag
 from datetime import datetime, timezone
 from db.supabase_client import get_client
 
 
 def url_hash(url: str) -> str:
-    return hashlib.sha256(url.encode()).hexdigest()[:32]
+    clean, _ = urldefrag(url)
+    return hashlib.sha256(clean.encode()).hexdigest()[:32]
 
 
 def filter_new_urls(urls: list[str]) -> list[str]:

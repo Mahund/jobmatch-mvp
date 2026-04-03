@@ -81,8 +81,12 @@ def get_unextracted_files() -> list[dict]:
         return []
 
     hashes = [f["hash"] for f in all_files]
-    result = db.table("listings").select("url_hash").in_("url_hash", hashes).execute()
-    done = {row["url_hash"] for row in result.data}
+    done: set[str] = set()
+    chunk_size = 200
+    for i in range(0, len(hashes), chunk_size):
+        chunk = hashes[i : i + chunk_size]
+        result = db.table("listings").select("url_hash").in_("url_hash", chunk).execute()
+        done.update(row["url_hash"] for row in result.data)
 
     return [f for f in all_files if f["hash"] not in done]
 
