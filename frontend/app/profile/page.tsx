@@ -1,11 +1,62 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase";
 import { api } from "@/lib/api";
 
 const CONTRACT_OPTIONS = ["full-time", "part-time", "per diem", "contract", "temporary"];
+
+const SPECIALTY_OPTIONS = [
+  "APS (Atención Primaria de Salud)",
+  "Acreditación",
+  "Ambulancias",
+  "Atención de pacientes",
+  "Atención prehospitalaria",
+  "Capacitación y Formación",
+  "Cardiología",
+  "Cateterismo Cardíaco y Hemodinamia",
+  "Clínica Administrativa",
+  "Clínica de Neurorrehabilitación",
+  "Clínica y Laboratorio",
+  "Consultorio Adosado de Especialidades (CAE)",
+  "Cuidado del Adulto Mayor",
+  "Domiciliaria",
+  "Emergencia",
+  "Emergencia pediátrica",
+  "Enfermería",
+  "Enfermería en Atención Primaria",
+  "Estética",
+  "Estética - Depilación Láser",
+  "General",
+  "Gestión Quirúrgica",
+  "Gestión de Camas (GRD)",
+  "Gestión y Liderazgo de Equipos de Enfermería",
+  "Hemodinamia",
+  "Hemodiálisis",
+  "Hospitalización",
+  "Medicina pediátrica",
+  "Medico Quirurgico",
+  "Médico Quirúrgico",
+  "Pabellón",
+  "Pabellón Quirúrgico",
+  "Pabellón central",
+  "Pediatría",
+  "Prehospitalaria",
+  "Prehospitalaria/Ambulancias",
+  "Procedimiento cardiovascular y hemodinamia",
+  "Procedimientos Gastroenterológicos",
+  "Procedimientos cardiovasculares y manejo de insumos clínicos",
+  "Procedimientos y exámenes",
+  "Proyectos ferroviarios",
+  "Residencia de Adulto Mayor",
+  "Salud Ocupacional",
+  "Salud Penitenciaria",
+  "Seguimiento Clínico",
+  "Supervisión de Convenios",
+  "Toma de Muestras",
+  "UCI Cardiovascular Pediátrico",
+];
 
 export default function ProfilePage() {
   const router = useRouter();
@@ -129,11 +180,9 @@ export default function ProfilePage() {
 
         <form onSubmit={handleSave} className="space-y-5">
           <Field label="Especialidad">
-            <input
+            <SpecialtyCombobox
               value={form.specialty}
-              onChange={e => setForm(f => ({ ...f, specialty: e.target.value }))}
-              placeholder="ej. Urgencias, UCI, Pediatría"
-              className={inputClass}
+              onChange={v => setForm(f => ({ ...f, specialty: v }))}
             />
           </Field>
 
@@ -242,6 +291,63 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
     <div>
       <label className="block text-sm font-medium text-gray-700 mb-1.5">{label}</label>
       {children}
+    </div>
+  );
+}
+
+function SpecialtyCombobox({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const [query, setQuery] = useState(value);
+  const [open, setOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // Keep query in sync when value is set externally (e.g. profile load)
+  useEffect(() => { setQuery(value); }, [value]);
+
+  const filtered = query.trim() === ""
+    ? SPECIALTY_OPTIONS
+    : SPECIALTY_OPTIONS.filter(s => s.toLowerCase().includes(query.toLowerCase()));
+
+  function select(s: string) {
+    onChange(s);
+    setQuery(s);
+    setOpen(false);
+  }
+
+  // Close on outside click
+  useEffect(() => {
+    function handler(e: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setOpen(false);
+        // If user typed something that doesn't match any option, revert to saved value
+        if (!SPECIALTY_OPTIONS.includes(query)) setQuery(value);
+      }
+    }
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [query, value]);
+
+  return (
+    <div ref={containerRef} className="relative">
+      <input
+        value={query}
+        onChange={e => { setQuery(e.target.value); setOpen(true); }}
+        onFocus={() => setOpen(true)}
+        placeholder="Escribe para filtrar..."
+        className={inputClass}
+      />
+      {open && filtered.length > 0 && (
+        <ul className="absolute z-10 mt-1 w-full max-h-56 overflow-y-auto bg-white border border-gray-200 rounded-lg shadow-lg text-sm">
+          {filtered.map(s => (
+            <li
+              key={s}
+              onMouseDown={() => select(s)}
+              className={`px-3 py-2 cursor-pointer hover:bg-blue-50 ${s === value ? "bg-blue-50 font-medium" : ""}`}
+            >
+              {s}
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }
