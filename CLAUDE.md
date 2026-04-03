@@ -44,7 +44,7 @@ cd backend && npx vercel --prod --scope mahunds-projects --yes
 cd frontend && npx vercel --prod --scope mahunds-projects --yes
 ```
 
-Each subdirectory has its own `.vercel/project.json` linking it to the correct project. Do not delete these.
+Each subdirectory has its own `.vercel/project.json` linking it to the correct Vercel project. This file is **local only** — it is gitignored and never committed. To recreate it on a new machine, run `vercel link` from the subdirectory and select the existing project when prompted.
 
 **Setting env vars on a project** — use the REST API (avoid `vercel env add` which also requires the right linked directory):
 ```bash

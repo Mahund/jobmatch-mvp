@@ -3,8 +3,6 @@ Unit tests for scraper/dedup.py — pure hash logic (no DB calls).
 """
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from scraper.dedup import url_hash, filter_new_urls, mark_seen
 
 
@@ -76,8 +74,8 @@ class TestFilterNewUrls:
 
         assert result == []
 
-    def test_multiple_fragment_variants_deduplicated_to_one(self):
-        """Several fragment variants of the same URL count as one new URL."""
+    def test_multiple_fragment_variants_all_pass_filter_when_unseen(self):
+        """filter_new_urls passes all variants when unseen; mark_seen deduplicates to one row."""
         base = "https://cl.computrabajo.com/ofertas-de-trabajo/oferta-4807DE3BF341"
         variants = [
             base + "#lc=ListOffers-Score4-8",
@@ -89,12 +87,17 @@ class TestFilterNewUrls:
         with patch("scraper.dedup.get_client", return_value=mock_db):
             result = filter_new_urls(variants)
 
-        # All three map to the same hash → all pass the "not seen" check,
-        # but the caller receives them as distinct strings (dedup happens via hash check).
-        # The important guarantee: their hashes are identical so only one DB record
-        # will be written on mark_seen.
-        hashes = {url_hash(u) for u in result}
-        assert len(hashes) == 1
+        # All three pass because the hash is not in seen_urls yet.
+        assert len(result) == 3
+
+        # mark_seen must deduplicate them to a single upsert row.
+        mock_db2 = MagicMock()
+        mock_db2.table.return_value.upsert.return_value.execute.return_value = MagicMock()
+        with patch("scraper.dedup.get_client", return_value=mock_db2):
+            mark_seen(result)
+        upsert_rows = mock_db2.table.return_value.upsert.call_args[0][0]
+        assert len(upsert_rows) == 1
+        assert upsert_rows[0]["url_hash"] == url_hash(base)
 
     def test_empty_input_returns_empty(self):
         with patch("scraper.dedup.get_client"):

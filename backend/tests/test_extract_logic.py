@@ -207,10 +207,6 @@ class TestWriteListingConfidence:
 # ---------------------------------------------------------------------------
 
 class TestGetUnextractedFiles:
-    def _make_storage_item(self, name: str, is_folder: bool = False):
-        """Simulate a Supabase Storage list() item."""
-        return {"name": name, "id": None if is_folder else "some-id"}
-
     def _make_mock_db(self, storage_files: list[str], already_done: list[str]):
         """
         Build a mock db where:

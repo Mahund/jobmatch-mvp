@@ -37,3 +37,13 @@ def upsert_profile(body: ProfileIn, user: dict = Depends(get_current_user)):
     }
     result = db.table("profiles").upsert(row, on_conflict="user_id").execute()
     return result.data[0] if result.data else row
+
+
+@router.delete("")
+def delete_account(user: dict = Depends(get_current_user)):
+    db = get_client()
+    user_id = user["user_id"]
+    db.table("matches").delete().eq("user_id", user_id).execute()
+    db.table("profiles").delete().eq("user_id", user_id).execute()
+    db.auth.admin.delete_user(user_id)
+    return {"deleted": True}

@@ -12,6 +12,7 @@ export default function ProfilePage() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState("");
+  const [deleting, setDeleting] = useState(false);
 
   const [form, setForm] = useState({
     specialty: "",
@@ -66,6 +67,23 @@ export default function ProfilePage() {
         ? f.accepted_contracts.filter(x => x !== c)
         : [...f.accepted_contracts, c],
     }));
+  }
+
+  async function handleDelete() {
+    if (!window.confirm("¿Seguro que quieres eliminar tu cuenta? Esta acción no se puede deshacer.")) return;
+    setDeleting(true);
+    setError("");
+    try {
+      const supabase = createClient();
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) { router.push("/"); return; }
+      await api.deleteAccount(session.access_token);
+      await supabase.auth.signOut();
+      router.push("/");
+    } catch {
+      setError("Error al eliminar la cuenta. Intenta de nuevo.");
+      setDeleting(false);
+    }
   }
 
   async function handleSave(e: React.FormEvent) {
@@ -201,6 +219,16 @@ export default function ProfilePage() {
             {saving ? "Guardando..." : "Guardar y ver coincidencias"}
           </button>
         </form>
+
+        <div className="mt-10 pt-6 border-t border-gray-200">
+          <button
+            onClick={handleDelete}
+            disabled={deleting}
+            className="text-sm text-red-600 hover:text-red-800 disabled:opacity-50 transition-colors"
+          >
+            {deleting ? "Eliminando..." : "Eliminar mi cuenta"}
+          </button>
+        </div>
       </div>
     </main>
   );
