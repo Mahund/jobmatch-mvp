@@ -66,9 +66,17 @@ export default function ProfilePage() {
   const [specialtyOptions, setSpecialtyOptions] = useState<string[]>(SPECIALTY_OPTIONS);
 
   useEffect(() => {
-    api.getSpecialties().then(opts => {
-      if (opts.length > 0) setSpecialtyOptions(opts);
-    }).catch(() => { /* keep fallback */ });
+    let isMounted = true;
+
+    api.getSpecialties()
+      .then(opts => {
+        if (isMounted && opts.length > 0) setSpecialtyOptions(opts);
+      })
+      .catch(() => { /* keep fallback */ });
+
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   const [form, setForm] = useState({
