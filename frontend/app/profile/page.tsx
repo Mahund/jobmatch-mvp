@@ -330,12 +330,18 @@ function SpecialtyCombobox({
   // Keep queryRef in sync synchronously so reconcile() never sees a stale query
   function updateQuery(q: string) { queryRef.current = q; setQuery(q); }
 
-  useEffect(() => { valueRef.current = value; }, [value]);
+  // Sync query when value changes externally (e.g. profile load).
+  // Uses the React derived-state pattern (setState during render) to avoid
+  // calling setState inside an effect.
+  const [prevValue, setPrevValue] = useState(value);
+  if (prevValue !== value) {
+    setPrevValue(value);
+    setQuery(value);
+  }
+
+  useEffect(() => { valueRef.current = value; queryRef.current = value; }, [value]);
   useEffect(() => { onChangeRef.current = onChange; }, [onChange]);
   useEffect(() => { optionsRef.current = options; }, [options]);
-
-  // Keep query in sync when value is set externally (e.g. profile load)
-  useEffect(() => { updateQuery(value); }, [value]);
 
   const filtered = query.trim() === ""
     ? options
