@@ -1,6 +1,8 @@
-from fastapi import APIRouter, Response
+import logging
+from fastapi import APIRouter, Response, HTTPException
 from db.supabase_client import get_client
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/specialties", tags=["specialties"])
 
 
@@ -18,9 +20,9 @@ def get_specialties(response: Response) -> list[str]:
             if isinstance(data[0], dict):
                 return sorted(set(row["specialty"] for row in data if row.get("specialty")))
             return sorted(set(s for s in data if s))
-    except Exception:
-        # Fall back to direct query if RPC doesn't exist
-        pass
+    except Exception as e:
+        # Log the RPC failure for observability; fall back to direct query
+        logger.info(f"RPC list_distinct_specialties unavailable, falling back to direct query: {e}")
 
     # Direct query: distinct specialties from listings, sorted
     try:
@@ -29,5 +31,6 @@ def get_specialties(response: Response) -> list[str]:
         specialties = sorted(set(row["specialty"] for row in data if row.get("specialty")))
         return specialties
     except Exception as e:
-        # Return empty list if query fails; caller should handle gracefully
-        return []
+        # Log and return 500 so callers can distinguish real errors from empty results
+        logger.error(f"Failed to fetch specialties: {e}")
+        raise HTTPException(status_code=500, detail="Failed to fetch specialties")
