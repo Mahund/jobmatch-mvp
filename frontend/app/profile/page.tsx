@@ -331,15 +331,11 @@ function SpecialtyCombobox({
   function updateQuery(q: string) { queryRef.current = q; setQuery(q); }
 
   // Sync query when value changes externally (e.g. profile load).
-  // Uses the React derived-state pattern (setState during render) to avoid
-  // calling setState inside an effect.
-  const [prevValue, setPrevValue] = useState(value);
-  if (prevValue !== value) {
-    setPrevValue(value);
+  useEffect(() => {
+    valueRef.current = value;
+    queryRef.current = value;
     setQuery(value);
-  }
-
-  useEffect(() => { valueRef.current = value; queryRef.current = value; }, [value]);
+  }, [value]);
   useEffect(() => { onChangeRef.current = onChange; }, [onChange]);
   useEffect(() => { optionsRef.current = options; }, [options]);
 
