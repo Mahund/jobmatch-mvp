@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase";
 import { api } from "@/lib/api";
@@ -334,6 +334,7 @@ function SpecialtyCombobox({
   const valueRef = useRef(value);
   const onChangeRef = useRef(onChange);
   const optionsRef = useRef(options);
+  const baseId = useId();
 
   // Keep queryRef in sync synchronously so reconcile() never sees a stale query
   function updateQuery(q: string) { queryRef.current = q; setQuery(q); }
@@ -379,16 +380,6 @@ function SpecialtyCombobox({
     }
   }, []);
 
-  // Register outside-click handler once; read latest state via refs
-  useEffect(() => {
-    function handler(e: MouseEvent) {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
-        reconcile();
-      }
-    }
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, [reconcile]);
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
     if (!open && e.key !== "Escape") setOpen(true);
@@ -401,37 +392,42 @@ function SpecialtyCombobox({
       if (filtered.length === 0) { setActiveIndex(-1); return; }
       setActiveIndex(i => (i <= 0 ? filtered.length - 1 : i - 1));
     } else if (e.key === "Enter") {
-      e.preventDefault();
-      const target = activeIndex >= 0 ? filtered[activeIndex] : filtered[0];
-      if (target) select(target);
+      const exactMatch = filtered.includes(query)
+        ? query
+        : filtered.find(s => normalize(s) === normalize(query));
+      const target = activeIndex >= 0 ? filtered[activeIndex] : exactMatch;
+      if (target) {
+        e.preventDefault();
+        select(target);
+      } else if (open) {
+        e.preventDefault();
+        setOpen(false);
+        setActiveIndex(-1);
+      }
     } else if (e.key === "Escape") {
+      e.preventDefault();
       setOpen(false);
       setActiveIndex(-1);
       updateQuery(value);
     }
   }
 
-  const listboxId = "specialty-listbox";
-
-  function handleContainerBlur(e: React.FocusEvent<HTMLDivElement>) {
-    if (!containerRef.current?.contains(e.relatedTarget as Node)) {
-      reconcile();
-    }
-  }
+  const listboxId = `${baseId}-specialty-listbox`;
 
   return (
-    <div ref={containerRef} className="relative" onBlur={handleContainerBlur}>
+    <div ref={containerRef} className="relative">
       <input
         id={id}
         role="combobox"
         aria-expanded={open && filtered.length > 0}
         aria-controls={open && filtered.length > 0 ? listboxId : undefined}
         aria-autocomplete="list"
-        aria-activedescendant={activeIndex >= 0 ? `specialty-option-${activeIndex}` : undefined}
+        aria-activedescendant={activeIndex >= 0 ? `${baseId}-specialty-option-${activeIndex}` : undefined}
         value={query}
         onChange={e => { updateQuery(e.target.value); setOpen(true); setActiveIndex(-1); }}
         onFocus={() => setOpen(true)}
         onKeyDown={handleKeyDown}
+        onBlur={() => reconcile()}
         placeholder="Escribe para filtrar..."
         className={inputClass}
       />
@@ -444,7 +440,7 @@ function SpecialtyCombobox({
           {filtered.map((s, i) => (
             <li
               key={s}
-              id={`specialty-option-${i}`}
+              id={`${baseId}-specialty-option-${i}`}
               role="option"
               aria-selected={s === value}
               onMouseDown={(e) => { e.preventDefault(); select(s); }}
