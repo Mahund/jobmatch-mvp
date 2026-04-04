@@ -43,12 +43,6 @@ SPECIALTY_TIERS = {
     "general": 0.3,
 }
 
-def _normalize_text(text: str) -> str:
-    """Remove accents from text for matching (NFD decomposition + accent removal)."""
-    nfd = unicodedata.normalize("NFD", text)
-    return "".join(c for c in nfd if unicodedata.category(c) != "Mn")
-
-
 # Keyword groups: canonical group name → substrings to match in listing specialty (lowercase)
 SPECIALTY_KEYWORD_GROUPS: dict[str, list[str]] = {
     "urgencias":        ["urgencia", "emergencia", "prehospital", "rescate", "ambulancia", "paramédic"],
@@ -81,9 +75,8 @@ RELATED_GROUP_PAIRS: set[frozenset] = {
 
 
 def _get_specialty_group(specialty: str) -> str | None:
-    s = _normalize_text(specialty.lower().strip())
-    for group, keywords in SPECIALTY_KEYWORD_GROUPS.items():
-        normalized_keywords = [_normalize_text(kw) for kw in keywords]
+    s = _normalize_text(specialty)
+    for group, normalized_keywords in _NORMALIZED_SPECIALTY_KEYWORDS.items():
         if any(kw in s for kw in normalized_keywords):
             return group
     return None
@@ -110,6 +103,13 @@ def _normalize_text(text: str | None) -> str:
         return ""
     normalized = unicodedata.normalize("NFKD", text)
     return "".join(ch for ch in normalized if not unicodedata.combining(ch)).lower().strip()
+
+
+# Pre-normalize keyword groups at module load for efficient matching
+_NORMALIZED_SPECIALTY_KEYWORDS: dict[str, list[str]] = {
+    group: [_normalize_text(kw) for kw in keywords]
+    for group, keywords in SPECIALTY_KEYWORD_GROUPS.items()
+}
 
 
 def _is_enfermeria_role(title: str | None) -> bool:
