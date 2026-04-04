@@ -1,7 +1,7 @@
 import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from routes import matches, profile, rematch
+from routes import matches, profile, rematch, specialties
 
 app = FastAPI(title="JobMatch API")
 
@@ -19,6 +19,7 @@ app.add_middleware(
 app.include_router(matches.router)
 app.include_router(profile.router)
 app.include_router(rematch.router)
+app.include_router(specialties.router)
 
 
 @app.get("/health")

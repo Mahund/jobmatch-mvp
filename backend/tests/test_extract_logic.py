@@ -284,3 +284,25 @@ class TestGetUnextractedFiles:
 
         hashes = [f["hash"] for f in result]
         assert hashes == ["abc"]
+
+    def test_deduplicates_same_hash_across_folders(self):
+        """Same URL scraped on different dates → same hash in two folders → returned only once."""
+        mock_db = MagicMock()
+
+        # Storage: root lists two date folders
+        mock_db.storage.from_.return_value.list.side_effect = [
+            [{"name": "2026-04-01", "id": None}, {"name": "2026-04-02", "id": None}],
+            [{"name": "abc.html", "id": "file-id"}],  # folder 1 contents
+            [{"name": "abc.html", "id": "file-id"}],  # folder 2 contents — same hash
+        ]
+
+        # DB: nothing extracted yet
+        mock_result = MagicMock()
+        mock_result.data = []
+        mock_db.table.return_value.select.return_value.in_.return_value.execute.return_value = mock_result
+
+        with patch("scraper.extract_run.get_client", return_value=mock_db):
+            result = get_unextracted_files()
+
+        assert len(result) == 1
+        assert result[0]["hash"] == "abc"

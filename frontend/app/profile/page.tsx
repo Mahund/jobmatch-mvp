@@ -1,11 +1,61 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase";
 import { api } from "@/lib/api";
 
 const CONTRACT_OPTIONS = ["full-time", "part-time", "per diem", "contract", "temporary"];
+
+const SPECIALTY_OPTIONS = [
+  "APS (Atención Primaria de Salud)",
+  "Acreditación",
+  "Ambulancias",
+  "Atención de pacientes",
+  "Atención prehospitalaria",
+  "Capacitación y Formación",
+  "Cardiología",
+  "Cateterismo Cardíaco y Hemodinamia",
+  "Clínica Administrativa",
+  "Clínica de Neurorrehabilitación",
+  "Clínica y Laboratorio",
+  "Consultorio Adosado de Especialidades (CAE)",
+  "Cuidado del Adulto Mayor",
+  "Domiciliaria",
+  "Emergencia",
+  "Emergencia pediátrica",
+  "Enfermería",
+  "Enfermería en Atención Primaria",
+  "Estética",
+  "Estética - Depilación Láser",
+  "General",
+  "Gestión Quirúrgica",
+  "Gestión de Camas (GRD)",
+  "Gestión y Liderazgo de Equipos de Enfermería",
+  "Hemodinamia",
+  "Hemodiálisis",
+  "Hospitalización",
+  "Medicina pediátrica",
+  "Médico Quirúrgico",
+  "Pabellón",
+  "Pabellón Quirúrgico",
+  "Pabellón central",
+  "Pediatría",
+  "Prehospitalaria",
+  "Prehospitalaria/Ambulancias",
+  "Procedimiento cardiovascular y hemodinamia",
+  "Procedimientos Gastroenterológicos",
+  "Procedimientos cardiovasculares y manejo de insumos clínicos",
+  "Procedimientos y exámenes",
+  "Proyectos ferroviarios",
+  "Residencia de Adulto Mayor",
+  "Salud Ocupacional",
+  "Salud Penitenciaria",
+  "Seguimiento Clínico",
+  "Supervisión de Convenios",
+  "Toma de Muestras",
+  "UCI Cardiovascular Pediátrico",
+];
 
 export default function ProfilePage() {
   const router = useRouter();
@@ -13,6 +63,21 @@ export default function ProfilePage() {
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState("");
   const [deleting, setDeleting] = useState(false);
+  const [specialtyOptions, setSpecialtyOptions] = useState<string[]>(SPECIALTY_OPTIONS);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    api.getSpecialties()
+      .then(opts => {
+        if (isMounted && opts.length > 0) setSpecialtyOptions(opts);
+      })
+      .catch(() => { /* keep fallback */ });
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const [form, setForm] = useState({
     specialty: "",
@@ -128,12 +193,12 @@ export default function ProfilePage() {
         <h2 className="text-xl font-semibold text-gray-900 mb-6">Tu perfil</h2>
 
         <form onSubmit={handleSave} className="space-y-5">
-          <Field label="Especialidad">
-            <input
+          <Field label="Especialidad" htmlFor="specialty-input">
+            <SpecialtyCombobox
+              id="specialty-input"
               value={form.specialty}
-              onChange={e => setForm(f => ({ ...f, specialty: e.target.value }))}
-              placeholder="ej. Urgencias, UCI, Pediatría"
-              className={inputClass}
+              onChange={v => setForm(f => ({ ...f, specialty: v }))}
+              options={specialtyOptions}
             />
           </Field>
 
@@ -237,11 +302,161 @@ export default function ProfilePage() {
 const inputClass =
   "w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 placeholder:text-gray-500";
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({ label, htmlFor, children }: { label: string; htmlFor?: string; children: React.ReactNode }) {
   return (
     <div>
-      <label className="block text-sm font-medium text-gray-700 mb-1.5">{label}</label>
+      <label htmlFor={htmlFor} className="block text-sm font-medium text-gray-700 mb-1.5">{label}</label>
       {children}
+    </div>
+  );
+}
+
+function normalize(s: string) {
+  return s.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase().trim();
+}
+
+function SpecialtyCombobox({
+  id,
+  value,
+  onChange,
+  options,
+}: {
+  id?: string;
+  value: string;
+  onChange: (v: string) => void;
+  options: string[];
+}) {
+  const [query, setQuery] = useState(value);
+  const [open, setOpen] = useState(false);
+  const [activeIndex, setActiveIndex] = useState(-1);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const queryRef = useRef(query);
+  const valueRef = useRef(value);
+  const onChangeRef = useRef(onChange);
+  const optionsRef = useRef(options);
+  const baseId = useId();
+
+  // Keep queryRef in sync synchronously so reconcile() never sees a stale query
+  function updateQuery(q: string) { queryRef.current = q; setQuery(q); }
+
+  // Sync query when value changes externally (e.g. profile load).
+  // Uses the React derived-state pattern (setState during render) to avoid
+  // calling setState inside an effect.
+  const [prevValue, setPrevValue] = useState(value);
+  if (prevValue !== value) {
+    setPrevValue(value);
+    setQuery(value);
+  }
+
+  useEffect(() => { valueRef.current = value; queryRef.current = value; }, [value]);
+  useEffect(() => { onChangeRef.current = onChange; }, [onChange]);
+  useEffect(() => { optionsRef.current = options; }, [options]);
+
+  const filtered = query.trim() === ""
+    ? options
+    : options.filter(s => normalize(s).includes(normalize(query)));
+
+  function select(s: string) {
+    onChangeRef.current(s);
+    updateQuery(s);
+    setOpen(false);
+    setActiveIndex(-1);
+  }
+
+  // All data read from refs so this is stable and the effect below registers once
+  const reconcile = useCallback(() => {
+    setOpen(false);
+    setActiveIndex(-1);
+    const q = queryRef.current;
+    const v = valueRef.current;
+    const opts = optionsRef.current;
+    // Prefer exact string match before falling back to normalized comparison
+    const match = opts.includes(q)
+      ? q
+      : opts.find(s => normalize(s) === normalize(q));
+    if (match) {
+      onChangeRef.current(match);
+      queryRef.current = match;
+      setQuery(match);
+    } else {
+      queryRef.current = v;
+      setQuery(v);
+    }
+  }, []);
+
+
+  function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (!open && e.key !== "Escape") setOpen(true);
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      if (filtered.length === 0) { setActiveIndex(-1); return; }
+      setActiveIndex(i => (i + 1) % filtered.length);
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      if (filtered.length === 0) { setActiveIndex(-1); return; }
+      setActiveIndex(i => (i <= 0 ? filtered.length - 1 : i - 1));
+    } else if (e.key === "Enter") {
+      const exactMatch = filtered.includes(query)
+        ? query
+        : filtered.find(s => normalize(s) === normalize(query));
+      const target = activeIndex >= 0 ? filtered[activeIndex] : exactMatch;
+      if (target) {
+        e.preventDefault();
+        select(target);
+      } else if (open) {
+        e.preventDefault();
+        setOpen(false);
+        setActiveIndex(-1);
+      }
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      setOpen(false);
+      setActiveIndex(-1);
+      updateQuery(value);
+    }
+  }
+
+  const listboxId = `${baseId}-specialty-listbox`;
+
+  return (
+    <div ref={containerRef} className="relative">
+      <input
+        id={id}
+        role="combobox"
+        aria-expanded={open && filtered.length > 0}
+        aria-controls={open && filtered.length > 0 ? listboxId : undefined}
+        aria-autocomplete="list"
+        aria-activedescendant={activeIndex >= 0 ? `${baseId}-specialty-option-${activeIndex}` : undefined}
+        value={query}
+        onChange={e => { updateQuery(e.target.value); setOpen(true); setActiveIndex(-1); }}
+        onFocus={() => setOpen(true)}
+        onKeyDown={handleKeyDown}
+        onBlur={() => reconcile()}
+        placeholder="Escribe para filtrar..."
+        className={inputClass}
+      />
+      {open && filtered.length > 0 && (
+        <ul
+          id={listboxId}
+          role="listbox"
+          className="absolute z-10 mt-1 w-full max-h-56 overflow-y-auto bg-white border border-gray-200 rounded-lg shadow-lg text-sm"
+        >
+          {filtered.map((s, i) => (
+            <li
+              key={s}
+              id={`${baseId}-specialty-option-${i}`}
+              role="option"
+              aria-selected={s === value}
+              onMouseDown={(e) => { e.preventDefault(); select(s); }}
+              className={`px-3 py-2 cursor-pointer hover:bg-blue-50 ${
+                i === activeIndex ? "bg-blue-100" : s === value ? "bg-blue-50 font-medium" : ""
+              }`}
+            >
+              {s}
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }

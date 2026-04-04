@@ -37,7 +37,14 @@ async function apiFetch(path: string, token: string, options?: RequestInit): Pro
   return res.json();
 }
 
+async function publicFetch(path: string): Promise<unknown> {
+  const res = await fetch(`${API_URL}${path}`);
+  if (!res.ok) throw new Error(`API error ${res.status}`);
+  return res.json();
+}
+
 export const api = {
+  getSpecialties: () => publicFetch("/specialties") as Promise<string[]>,
   getMatches: (token: string, page = 1, pageSize = 20, sort: "score" | "published_date" = "score") =>
     apiFetch(`/matches?page=${page}&page_size=${pageSize}&sort=${sort}`, token) as Promise<{
       matches: object[];
