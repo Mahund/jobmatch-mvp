@@ -45,20 +45,20 @@ SPECIALTY_TIERS = {
 
 # Keyword groups: canonical group name → substrings to match in listing specialty (lowercase)
 SPECIALTY_KEYWORD_GROUPS: dict[str, list[str]] = {
-    "urgencias":        ["urgencia", "emergencia", "prehospital", "rescate", "ambulancia", "paramédic", "paramedic"],
-    "uci":              ["uci", "uti", "paciente crítico", "paciente critico", "intensivo", "upc"],
+    "urgencias":        ["urgencia", "emergencia", "prehospital", "rescate", "ambulancia", "paramédic"],
+    "uci":              ["uci", "uti", "paciente crítico", "intensivo", "upc"],
     "neonatología":     ["neonato", "neonatolog", "ucin"],
     "pediatría":        ["pediatr"],
-    "pabellón":         ["pabellón", "pabellon", "anestesia", "arsenal", "quirúrgic", "quirurgic"],
-    "oncología":        ["oncolog", "quimioterapia", "radioterapia", "cáncer", "cancer"],
+    "pabellón":         ["pabellón", "anestesia", "arsenal", "quirúrgic"],
+    "oncología":        ["oncolog", "quimioterapia", "radioterapia", "cáncer"],
     "domiciliaria":     ["domicili"],
     "salud_ocupacional":["ocupacional", "higiene industrial"],
-    "hospitalización":  ["hospitaliz", "médico quirúrgico", "medico quirurgico", "cuidados medios", "hmq"],
-    "diálisis":         ["diálisis", "dialisis", "hemodiálisis", "hemodialisis"],
-    "maternidad":       ["maternidad", "ginecolog", "obstétric", "obstetric"],
+    "hospitalización":  ["hospitaliz", "médico quirúrgico", "cuidados medios", "hmq"],
+    "diálisis":         ["diálisis", "hemodiálisis"],
+    "maternidad":       ["maternidad", "ginecolog", "obstétric"],
     "coronaria":        ["coronaria", "cardiolog", "hemodinam", "cateterismo"],
-    "adulto_mayor":     ["adulto mayor", "larga estadía", "larga estadia", "larga estancia", "gerontolog"],
-    "aps":              ["atención primaria", "atencion primaria", "cesfam", "salud familiar"],
+    "adulto_mayor":     ["adulto mayor", "larga estadía", "larga estancia", "gerontolog"],
+    "aps":              ["atención primaria", "cesfam", "salud familiar"],
 }
 
 # Groups considered clinically related (sharing skills/context)
@@ -75,9 +75,9 @@ RELATED_GROUP_PAIRS: set[frozenset] = {
 
 
 def _get_specialty_group(specialty: str) -> str | None:
-    s = specialty.lower().strip()
-    for group, keywords in SPECIALTY_KEYWORD_GROUPS.items():
-        if any(kw in s for kw in keywords):
+    s = _normalize_text(specialty)
+    for group, normalized_keywords in _NORMALIZED_SPECIALTY_KEYWORDS.items():
+        if any(kw in s for kw in normalized_keywords):
             return group
     return None
 
@@ -103,6 +103,13 @@ def _normalize_text(text: str | None) -> str:
         return ""
     normalized = unicodedata.normalize("NFKD", text)
     return "".join(ch for ch in normalized if not unicodedata.combining(ch)).lower().strip()
+
+
+# Pre-normalize keyword groups at module load for efficient matching
+_NORMALIZED_SPECIALTY_KEYWORDS: dict[str, list[str]] = {
+    group: [_normalize_text(kw) for kw in keywords]
+    for group, keywords in SPECIALTY_KEYWORD_GROUPS.items()
+}
 
 
 def _is_enfermeria_role(title: str | None) -> bool:
